@@ -1,0 +1,25 @@
+# Коммерческие данные — не публикуются
+*.local.md
+
+# Окружение и секреты
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+dist/
+build/
+
+# Прочее
+.scratch/
+*.log
+.DS_Store
