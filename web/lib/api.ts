@@ -183,6 +183,13 @@ export function getRecording(id: string): Promise<RecordingDetail> {
 
 export type ExportFormat = "txt" | "srt" | "docx";
 
+// Mirrors backend/app/export.py's _stem() — used only as a fallback when
+// Content-Disposition parsing fails, so a raw original_filename like
+// "meeting.mp4" doesn't turn into a double extension like "meeting.mp4.txt".
+export function stemFilename(filename: string): string {
+  return filename.replace(/\.[^./]+$/, "");
+}
+
 // A plain <a href> download link can't carry the Authorization header, so
 // the export endpoint (like every other recording route) requires it —
 // fetch as a blob instead and trigger the browser's download via a
@@ -196,7 +203,7 @@ export async function downloadExport(id: string, format: ExportFormat, filenameH
 
   const disposition = response.headers.get("Content-Disposition") ?? "";
   const asciiMatch = disposition.match(/filename="([^"]+)"/);
-  const filename = asciiMatch?.[1] ?? `${filenameHint}.${format}`;
+  const filename = asciiMatch?.[1] ?? `${stemFilename(filenameHint)}.${format}`;
 
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);

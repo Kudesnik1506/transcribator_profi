@@ -61,3 +61,12 @@ def test_build_docx_produces_valid_document_with_segment_paragraphs():
 
     assert "Первый абзац" in paragraph_texts
     assert "Второй абзац про бюджет" in paragraph_texts
+
+
+def test_build_docx_heading_drops_the_original_extension():
+    data = build_docx("совещание 2026-08-06.mp4", SEGMENTS)
+
+    doc = Document(io.BytesIO(data))
+
+    assert doc.paragraphs[0].text == "совещание 2026-08-06"
+    assert doc.paragraphs[0].style.name == "Heading 1"

@@ -35,9 +35,13 @@ def build_srt(segments: list[TimedText]) -> str:
     return "\n\n".join(blocks)
 
 
-def build_docx(title: str, segments: list[TimedText]) -> bytes:
+def _stem(filename: str) -> str:
+    return Path(filename).stem or filename
+
+
+def build_docx(original_filename: str, segments: list[TimedText]) -> bytes:
     doc = Document()
-    doc.add_heading(title, level=1)
+    doc.add_heading(_stem(original_filename), level=1)
     for s in segments:
         doc.add_paragraph(s.text)
     buffer = io.BytesIO()
@@ -46,8 +50,7 @@ def build_docx(title: str, segments: list[TimedText]) -> bytes:
 
 
 def export_filename(original_filename: str, ext: str) -> str:
-    stem = Path(original_filename).stem or original_filename
-    return f"{stem}.{ext}"
+    return f"{_stem(original_filename)}.{ext}"
 
 
 def content_disposition(filename: str) -> str:
