@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { searchRecording } from "@/lib/api";
 import { formatDate } from "@/lib/date";
 import { findActiveSegmentIndex } from "@/lib/player";
+import { pluralizeRu } from "@/lib/plural";
 
 type Segment = {
   id: string;
@@ -148,7 +149,9 @@ export function PlayerTranscript({
         />
         {query.trim() && (
           <span className="shrink-0 text-sm text-zinc-500">
-            {matchCount > 0 ? `${matchCount} совпадений` : "ничего не найдено"}
+            {matchCount > 0
+              ? `${matchCount} ${pluralizeRu(matchCount, ["совпадение", "совпадения", "совпадений"])}`
+              : "ничего не найдено"}
           </span>
         )}
       </div>
