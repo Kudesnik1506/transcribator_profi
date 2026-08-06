@@ -126,7 +126,7 @@ def list_error_logs(
     if level:
         query = query.filter(ErrorLog.level == level)
     if recording_id:
-        query = query.filter(ErrorLog.recording_id == recording_id)
+        query = query.filter(ErrorLog.recording_id.startswith(recording_id))
 
     logs = query.all()
     return [

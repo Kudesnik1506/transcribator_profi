@@ -221,3 +221,16 @@ def test_list_error_logs_filters_by_recording(client, db_session, admin_auth_hea
     response = client.get(f"/admin/error-logs?recording_id={recording.id}", headers=admin_auth_headers)
 
     assert [log["message"] for log in response.json()] == ["этой записи"]
+
+
+def test_list_error_logs_filters_by_recording_id_prefix(client, db_session, admin_auth_headers, active_user):
+    recording = Recording(user_id=active_user.id, original_filename="a.mp4", s3_key_media="k1")
+    db_session.add(recording)
+    db_session.commit()
+    db_session.add(ErrorLog(recording_id=recording.id, level="error", message="этой записи", context={}))
+    db_session.add(ErrorLog(recording_id=None, level="error", message="другой", context={}))
+    db_session.commit()
+
+    response = client.get(f"/admin/error-logs?recording_id={recording.id[:8]}", headers=admin_auth_headers)
+
+    assert [log["message"] for log in response.json()] == ["этой записи"]
