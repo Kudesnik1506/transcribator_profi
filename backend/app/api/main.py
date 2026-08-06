@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from botocore.exceptions import ClientError
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 import app.models  # noqa: F401 - registers tables on Base.metadata
@@ -32,6 +33,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Транскрибатор API", lifespan=lifespan)
+
+# Браузер блокирует cross-origin fetch без этих заголовков — web/ и api/
+# всегда работают на разных origin (разные порты минимум).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.frontend_base_url],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(auth_router)
 app.include_router(config_router)
