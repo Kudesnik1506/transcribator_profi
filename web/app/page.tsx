@@ -196,6 +196,9 @@ function UploadPageContent() {
           <Link href="/recordings" className="text-sm text-zinc-500 underline">
             Мои Записи
           </Link>
+          <Link href="/profile" className="text-sm text-zinc-500 underline">
+            Профиль
+          </Link>
           <button
             onClick={() => {
               clearToken();

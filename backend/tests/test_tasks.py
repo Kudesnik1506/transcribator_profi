@@ -216,6 +216,34 @@ def test_retry_failed_chunks_reprocesses_only_failed_ones(db_session, tmp_path, 
     assert segments[1].start_ms == 900_000
 
 
+def test_notify_recording_finished_called_once_even_when_retry_reruns_finalize(db_session, tmp_path, monkeypatch):
+    recording = _make_recording(db_session)
+    chunk0 = Chunk(recording_id=recording.id, idx=0, start_sec=0, end_sec=900, status="done", attempts=1)
+    chunk1 = Chunk(recording_id=recording.id, idx=1, start_sec=900, end_sec=1800, status="failed", attempts=3)
+    db_session.add_all([chunk0, chunk1])
+    db_session.add(
+        Segment(recording_id=recording.id, chunk_id=chunk0.id, start_ms=0, end_ms=1000, text="успешный")
+    )
+    recording.status = "partial"
+    db_session.commit()
+
+    notify_calls = []
+    monkeypatch.setattr(tasks, "notify_recording_finished", lambda db, rec: notify_calls.append(rec.status))
+
+    chunks = _fake_chunks(tmp_path, 2)
+    _setup_common_mocks(monkeypatch, chunks)
+    monkeypatch.setattr(
+        tasks,
+        "transcribe",
+        lambda audio_bytes, model, **kwargs: [SpeechKitSegment(start_ms=0, end_ms=500, text="восстановлено")],
+    )
+    monkeypatch.setattr(tasks, "summarize", lambda transcript: ["новая сводка"])
+
+    tasks.retry_failed_chunks(db_session, recording.id, work_dir=tmp_path)
+
+    assert notify_calls == ["done"]
+
+
 def test_retry_failed_chunks_noop_when_nothing_failed(db_session, tmp_path, monkeypatch):
     recording = _make_recording(db_session)
     chunk0 = Chunk(recording_id=recording.id, idx=0, start_sec=0, end_sec=900, status="done", attempts=1)
@@ -248,6 +276,7 @@ def test_process_recording_marks_failed_on_download_exception(db_session, tmp_pa
     db_session.refresh(recording)
     assert recording.status == "failed"
     assert "s3 is down" in recording.error_message
+    assert recording.notified_at is not None
 
 
 def test_process_recording_writes_error_log_on_pipeline_failure(db_session, tmp_path, monkeypatch):

@@ -117,6 +117,7 @@ def test_me_returns_current_user_info(client):
     assert body["email"] == "a@example.com"
     assert body["status"] == "pending"
     assert body["role"] == "user"
+    assert body["telegram_linked"] is False
 
 
 def test_me_rejects_missing_token(client):

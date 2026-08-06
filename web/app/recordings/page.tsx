@@ -58,12 +58,20 @@ function RecordingsListPageContent() {
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-12">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Мои Записи</h1>
-        <Link
-          href="/"
-          className="rounded-full border border-solid border-black/[.08] px-4 py-1.5 text-sm transition-colors hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a]"
-        >
-          Загрузить
-        </Link>
+        <div className="flex gap-2">
+          <Link
+            href="/profile"
+            className="rounded-full border border-solid border-black/[.08] px-4 py-1.5 text-sm transition-colors hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a]"
+          >
+            Профиль
+          </Link>
+          <Link
+            href="/"
+            className="rounded-full border border-solid border-black/[.08] px-4 py-1.5 text-sm transition-colors hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a]"
+          >
+            Загрузить
+          </Link>
+        </div>
       </div>
 
       {error && <p className="text-red-600">{error}</p>}

@@ -40,6 +40,11 @@ class Recording(Base):
     progress_percent: Mapped[int] = mapped_column(default=0)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_now)
+    notified_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # Guards against duplicate notifications for the same outcome (e.g. a
+    # re-entrant _finalize call) without blocking a genuinely new outcome —
+    # a retry can move partial -> done, and that deserves its own email.
+    notified_status: Mapped[str | None] = mapped_column(String, nullable=True)
 
     chunks: Mapped[list["Chunk"]] = relationship(back_populates="recording", cascade="all, delete-orphan")
     segments: Mapped[list["Segment"]] = relationship(back_populates="recording", cascade="all, delete-orphan")
@@ -93,6 +98,16 @@ class Message(Base):
     role: Mapped[str] = mapped_column(String)
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class TelegramLinkCode(Base):
+    __tablename__ = "telegram_link_codes"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    code: Mapped[str] = mapped_column(String, unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+    expires_at: Mapped[datetime] = mapped_column()
 
 
 class Summary(Base):

@@ -44,5 +44,27 @@ class Settings(BaseSettings):
     # approved user who starts uploading in bulk. Calendar day, MSK.
     daily_upload_quota: int = 3
 
+    # Used to build the direct link to a Recording's result page in
+    # notification emails/Telegram messages (D17).
+    frontend_base_url: str = "http://localhost:3000"
+
+    # Empty smtp_host means "not configured" — notify.py treats that as a
+    # delivery failure to log, not a crash (D17, real credentials are open
+    # question #1 in docs/spec.md, still pending from the customer).
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "noreply@example.com"
+
+    # Same "empty means not configured" contract as SMTP above.
+    telegram_bot_token: str = ""
+    telegram_bot_username: str = ""
+    # Set via Telegram's setWebhook `secret_token` param and checked against
+    # the X-Telegram-Bot-Api-Secret-Token header — without it, anyone who
+    # guesses a live link code could steal it by hitting our webhook first.
+    # Empty means "not configured", so the check is skipped (dev/no bot yet).
+    telegram_webhook_secret: str = ""
+
 
 settings = Settings()

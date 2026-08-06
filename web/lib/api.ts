@@ -279,6 +279,7 @@ export type CurrentUser = {
   email: string;
   role: string;
   status: string;
+  telegram_linked: boolean;
 };
 
 export async function register(email: string, password: string): Promise<{ id: string; status: string }> {
@@ -310,4 +311,14 @@ export async function login(email: string, password: string): Promise<string> {
 
 export function getMe(): Promise<CurrentUser> {
   return apiFetch<CurrentUser>("/auth/me", "get current user");
+}
+
+export type TelegramLinkCode = {
+  code: string;
+  bot_username: string;
+  expires_at: string;
+};
+
+export function createTelegramLinkCode(): Promise<TelegramLinkCode> {
+  return apiFetch<TelegramLinkCode>("/telegram/link-code", "create telegram link code", { method: "POST" });
 }

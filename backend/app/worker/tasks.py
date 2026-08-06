@@ -4,10 +4,12 @@ from time import sleep
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import Chunk, ErrorLog, Recording, Segment, Summary
+from app.error_log import log_error
+from app.models import Chunk, Recording, Segment, Summary
 from app.s3 import download_media
 from app.worker.ai_gateway_client import summarize
 from app.worker.ffmpeg_extract import AudioChunk, extract_audio, split_audio_into_chunks
+from app.worker.notify import notify_recording_finished
 from app.worker.retry import retry_with_backoff
 from app.worker.speechkit_client import model_for_mode, poll_config_for_mode, transcribe
 from app.worker.timecodes import offset_segments
@@ -136,7 +138,7 @@ def _process_chunk(db: Session, recording: Recording, chunk_row: Chunk, audio_ch
     except Exception as exc:
         chunk_row.status = "failed"
         db.commit()
-        _log_error(
+        log_error(
             db,
             recording.id,
             f"chunk {chunk_row.idx} failed after {chunk_row.attempts} attempts: {exc}",
@@ -161,7 +163,8 @@ def _finalize(db: Session, recording: Recording, chunk_rows: list[Chunk]) -> Non
         recording.status = "failed"
         recording.error_message = "все куски не удалось распознать после повторных попыток"
         db.commit()
-        _log_error(db, recording.id, recording.error_message, context={"chunk_count": len(chunk_rows)})
+        log_error(db, recording.id, recording.error_message, context={"chunk_count": len(chunk_rows)})
+        notify_recording_finished(db, recording)
         return
 
     segments = db.query(Segment).filter_by(recording_id=recording.id).order_by(Segment.start_ms).all()
@@ -181,6 +184,7 @@ def _finalize(db: Session, recording: Recording, chunk_rows: list[Chunk]) -> Non
 
     recording.status = "partial" if any_failed else "done"
     db.commit()
+    notify_recording_finished(db, recording)
 
 
 def _mark_failed(db: Session, recording: Recording, exc: Exception) -> None:
@@ -188,9 +192,5 @@ def _mark_failed(db: Session, recording: Recording, exc: Exception) -> None:
     recording.status = "failed"
     recording.error_message = str(exc)
     db.commit()
-    _log_error(db, recording.id, str(exc), context={"stage": stage})
-
-
-def _log_error(db: Session, recording_id: str, message: str, context: dict) -> None:
-    db.add(ErrorLog(recording_id=recording_id, level="error", message=message, context=context))
-    db.commit()
+    log_error(db, recording.id, str(exc), context={"stage": stage})
+    notify_recording_finished(db, recording)

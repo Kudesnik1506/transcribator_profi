@@ -75,8 +75,15 @@ class MeResponse(BaseModel):
     email: str
     role: str
     status: str
+    telegram_linked: bool
 
 
 @router.get("/auth/me", response_model=MeResponse)
 def me(user: User = Depends(get_current_user)) -> MeResponse:
-    return MeResponse(id=user.id, email=user.email, role=user.role, status=user.status)
+    return MeResponse(
+        id=user.id,
+        email=user.email,
+        role=user.role,
+        status=user.status,
+        telegram_linked=user.telegram_chat_id is not None,
+    )
