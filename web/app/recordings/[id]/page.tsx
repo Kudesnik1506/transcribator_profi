@@ -5,6 +5,8 @@ import { use, useEffect, useState } from "react";
 import { getRecording, retryRecording, type RecordingDetail } from "@/lib/api";
 import { IN_PROGRESS_STATUSES, TERMINAL_STATUSES, statusLabel } from "@/lib/recordingStatus";
 
+import { Dialog } from "./Dialog";
+
 function formatTimestamp(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);
@@ -121,6 +123,10 @@ export default function RecordingPage({ params }: { params: Promise<{ id: string
             ))}
           </div>
         </section>
+      )}
+
+      {(recording.status === "done" || recording.status === "partial") && recording.segments.length > 0 && (
+        <Dialog recordingId={recording.id} />
       )}
     </main>
   );

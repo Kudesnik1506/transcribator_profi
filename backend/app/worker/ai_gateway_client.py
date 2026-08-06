@@ -1,4 +1,5 @@
 import json
+from collections.abc import Iterator
 
 import httpx
 
@@ -17,6 +18,10 @@ class AIGatewayError(RuntimeError):
     pass
 
 
+def _headers() -> dict:
+    return {"Authorization": f"Bearer {settings.timeweb_ai_gateway_key}"}
+
+
 def summarize(transcript_text: str) -> list[str]:
     body = {
         "model": settings.timeweb_ai_gateway_model,
@@ -25,10 +30,9 @@ def summarize(transcript_text: str) -> list[str]:
             {"role": "user", "content": transcript_text},
         ],
     }
-    headers = {"Authorization": f"Bearer {settings.timeweb_ai_gateway_key}"}
 
     with httpx.Client(timeout=120.0) as client:
-        response = client.post(CHAT_COMPLETIONS_URL, json=body, headers=headers)
+        response = client.post(CHAT_COMPLETIONS_URL, json=body, headers=_headers())
     response.raise_for_status()
 
     data = response.json()
@@ -46,3 +50,25 @@ def summarize(transcript_text: str) -> list[str]:
         raise AIGatewayError(f"expected a JSON array of strings, got: {items!r}")
 
     return items
+
+
+def stream_answer(messages: list[dict]) -> Iterator[str]:
+    body = {
+        "model": settings.timeweb_ai_gateway_model,
+        "messages": messages,
+        "stream": True,
+    }
+
+    with httpx.Client(timeout=120.0) as client:
+        with client.stream("POST", CHAT_COMPLETIONS_URL, json=body, headers=_headers()) as response:
+            response.raise_for_status()
+            for line in response.iter_lines():
+                if not line.startswith("data:"):
+                    continue
+                data = line[len("data:") :].strip()
+                if data == "[DONE]":
+                    break
+                chunk = json.loads(data)
+                delta = chunk["choices"][0]["delta"].get("content")
+                if delta:
+                    yield delta

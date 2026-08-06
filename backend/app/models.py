@@ -70,6 +70,16 @@ class ErrorLog(Base):
     created_at: Mapped[datetime] = mapped_column(default=_now)
 
 
+class Message(Base):
+    __tablename__ = "messages"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    recording_id: Mapped[str] = mapped_column(ForeignKey("recordings.id"))
+    role: Mapped[str] = mapped_column(String)
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+
+
 class Summary(Base):
     __tablename__ = "summaries"
 

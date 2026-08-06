@@ -150,3 +150,42 @@ export function listRecordings(): Promise<RecordingListItem[]> {
 export function retryRecording(id: string): Promise<{ id: string; status: string }> {
   return apiFetch(`/recordings/${id}/retry`, "retry recording", { method: "POST" });
 }
+
+export type DialogMessage = {
+  role: string;
+  content: string;
+  created_at: string;
+};
+
+export function getMessages(recordingId: string): Promise<DialogMessage[]> {
+  return apiFetch<DialogMessage[]>(`/recordings/${recordingId}/messages`, "get messages");
+}
+
+export async function askQuestion(
+  recordingId: string,
+  content: string,
+  onDelta: (chunk: string) => void
+): Promise<void> {
+  const response = await fetch(`${API_URL}/recordings/${recordingId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+  if (!response.ok || !response.body) {
+    if (response.status === 413) {
+      throw new Error("транскрипт не помещается в контекст модели");
+    }
+    if (response.status === 409) {
+      throw new Error("транскрипт ещё не готов");
+    }
+    throw new Error(`ask question failed: ${response.status}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    onDelta(decoder.decode(value, { stream: true }));
+  }
+}

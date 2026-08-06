@@ -1,12 +1,16 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.db import get_db
-from app.models import Recording
+from app.config import settings
+from app.db import SessionLocal, get_db
+from app.models import Message, Recording, Segment
 from app.queue import get_queue
+from app.worker.ai_gateway_client import stream_answer
+from app.worker.dialog import TranscriptTooLongError, build_dialog_messages
 
 router = APIRouter()
 
@@ -47,6 +51,16 @@ class RecordingListItemResponse(BaseModel):
     status: str
     progress_percent: int
     created_at: datetime
+
+
+class MessageResponse(BaseModel):
+    role: str
+    content: str
+    created_at: datetime
+
+
+class AskQuestionRequest(BaseModel):
+    content: str
 
 
 @router.get("/recordings", response_model=list[RecordingListItemResponse])
@@ -115,3 +129,70 @@ async def retry_recording(
     await queue.enqueue_job("retry_failed_chunks_job", recording.id)
 
     return RecordingResponse(id=recording.id, status=recording.status)
+
+
+@router.get("/recordings/{recording_id}/messages", response_model=list[MessageResponse])
+def list_messages(recording_id: str, db: Session = Depends(get_db)) -> list[MessageResponse]:
+    recording = db.get(Recording, recording_id)
+    if recording is None:
+        raise HTTPException(status_code=404, detail="recording not found")
+
+    messages = (
+        db.query(Message).filter_by(recording_id=recording_id).order_by(Message.created_at).all()
+    )
+    return [MessageResponse(role=m.role, content=m.content, created_at=m.created_at) for m in messages]
+
+
+@router.post("/recordings/{recording_id}/messages")
+def ask_question(
+    recording_id: str, payload: AskQuestionRequest, db: Session = Depends(get_db)
+) -> StreamingResponse:
+    recording = db.get(Recording, recording_id)
+    if recording is None:
+        raise HTTPException(status_code=404, detail="recording not found")
+
+    segments = sorted(recording.segments, key=lambda s: s.start_ms)
+    if recording.status not in ("done", "partial") or not segments:
+        raise HTTPException(status_code=409, detail="транскрипт ещё не готов")
+
+    transcript_text = "\n".join(s.text for s in segments)
+    history_rows = (
+        db.query(Message).filter_by(recording_id=recording_id).order_by(Message.created_at).all()
+    )
+    history = [{"role": m.role, "content": m.content} for m in history_rows]
+
+    try:
+        messages = build_dialog_messages(
+            transcript_text, history, payload.content, settings.max_dialog_context_tokens
+        )
+    except TranscriptTooLongError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+
+    db.add(Message(recording_id=recording_id, role="user", content=payload.content))
+    db.commit()
+
+    def stream_and_save_answer():
+        answer_parts: list[str] = []
+        try:
+            for delta in stream_answer(messages):
+                answer_parts.append(delta)
+                yield delta
+        except Exception:
+            error_text = "Не удалось получить ответ — сервис ИИ временно недоступен."
+            answer_parts.append(error_text)
+            yield error_text
+
+        answer_text = "".join(answer_parts)
+        if answer_text:
+            # A fresh session, not the request-scoped `db`: by the time this
+            # generator finishes, FastAPI may already have torn down `db`'s
+            # dependency lifecycle since streaming happens after the route
+            # function returns its response object.
+            save_db = SessionLocal()
+            try:
+                save_db.add(Message(recording_id=recording_id, role="assistant", content=answer_text))
+                save_db.commit()
+            finally:
+                save_db.close()
+
+    return StreamingResponse(stream_and_save_answer(), media_type="text/plain")

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     timeweb_ai_gateway_key: str = ""
     timeweb_ai_gateway_url: str = "https://api.timeweb.ai/v1"
     timeweb_ai_gateway_model: str = "gpt-4o-mini"
+    max_dialog_context_tokens: int = 100_000
 
 
 settings = Settings()
