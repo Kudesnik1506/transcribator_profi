@@ -68,7 +68,8 @@ def test_get_recording_returns_segments_and_summary(client, db_session):
     recording = Recording(original_filename="f.mp4", s3_key_media="k", status="done")
     db_session.add(recording)
     db_session.commit()
-    db_session.add(Segment(recording_id=recording.id, start_ms=0, end_ms=1000, text="привет"))
+    segment = Segment(recording_id=recording.id, start_ms=0, end_ms=1000, text="привет")
+    db_session.add(segment)
     db_session.add(Summary(recording_id=recording.id, items=["п1"], model="gpt-4o-mini"))
     db_session.commit()
 
@@ -77,7 +78,7 @@ def test_get_recording_returns_segments_and_summary(client, db_session):
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "done"
-    assert body["segments"] == [{"start_ms": 0, "end_ms": 1000, "text": "привет"}]
+    assert body["segments"] == [{"id": segment.id, "start_ms": 0, "end_ms": 1000, "text": "привет"}]
     assert body["summary"] == {"items": ["п1"]}
 
 

@@ -1,6 +1,7 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export type RecordingSegment = {
+  id: string;
   start_ms: number;
   end_ms: number;
   text: string;
@@ -151,6 +152,26 @@ export function createRecording(
 
 export function getRecording(id: string): Promise<RecordingDetail> {
   return apiFetch<RecordingDetail>(`/recordings/${id}`, "get recording");
+}
+
+export type SearchMatch = {
+  segment_id: string;
+  start_ms: number;
+  end_ms: number;
+  text: string;
+};
+
+export type SearchResult = {
+  query: string;
+  total: number;
+  matches: SearchMatch[];
+};
+
+export function searchRecording(recordingId: string, query: string): Promise<SearchResult> {
+  return apiFetch<SearchResult>(
+    `/recordings/${recordingId}/search?q=${encodeURIComponent(query)}`,
+    "search recording"
+  );
 }
 
 export function listRecordings(): Promise<RecordingListItem[]> {

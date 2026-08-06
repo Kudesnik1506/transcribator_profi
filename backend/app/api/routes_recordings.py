@@ -10,6 +10,7 @@ from app.db import SessionLocal, get_db
 from app.models import Message, Recording, Segment
 from app.queue import get_queue
 from app.s3 import presign_get_url
+from app.search import search_segments
 from app.worker.ai_gateway_client import stream_answer
 from app.worker.dialog import TranscriptTooLongError, build_dialog_messages
 
@@ -28,6 +29,7 @@ class RecordingResponse(BaseModel):
 
 
 class SegmentResponse(BaseModel):
+    id: str
     start_ms: int
     end_ms: int
     text: str
@@ -65,6 +67,19 @@ class MessageResponse(BaseModel):
 
 class AskQuestionRequest(BaseModel):
     content: str
+
+
+class SearchMatchResponse(BaseModel):
+    segment_id: str
+    start_ms: int
+    end_ms: int
+    text: str
+
+
+class SearchResponse(BaseModel):
+    query: str
+    total: int
+    matches: list[SearchMatchResponse]
 
 
 @router.get("/recordings", response_model=list[RecordingListItemResponse])
@@ -118,8 +133,28 @@ def get_recording(recording_id: str, db: Session = Depends(get_db)) -> Recording
         content_type=recording.content_type,
         media_url=presign_get_url(recording.s3_key_media),
         error_message=recording.error_message,
-        segments=[SegmentResponse(start_ms=s.start_ms, end_ms=s.end_ms, text=s.text) for s in segments],
+        segments=[SegmentResponse(id=s.id, start_ms=s.start_ms, end_ms=s.end_ms, text=s.text) for s in segments],
         summary=SummaryResponse(items=recording.summary.items) if recording.summary else None,
+    )
+
+
+@router.get("/recordings/{recording_id}/search", response_model=SearchResponse)
+def search_recording(recording_id: str, q: str, db: Session = Depends(get_db)) -> SearchResponse:
+    recording = db.get(Recording, recording_id)
+    if recording is None:
+        raise HTTPException(status_code=404, detail="recording not found")
+
+    if not q.strip():
+        return SearchResponse(query=q, total=0, matches=[])
+
+    matches = search_segments(db, recording_id, q)
+    return SearchResponse(
+        query=q,
+        total=len(matches),
+        matches=[
+            SearchMatchResponse(segment_id=m.segment_id, start_ms=m.start_ms, end_ms=m.end_ms, text=m.text)
+            for m in matches
+        ],
     )
 
 

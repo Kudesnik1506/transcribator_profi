@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { searchRecording } from "@/lib/api";
 import { findActiveSegmentIndex } from "@/lib/player";
 
 type Segment = {
+  id: string;
   start_ms: number;
   end_ms: number;
   text: string;
@@ -18,10 +20,12 @@ function formatTimestamp(ms: number): string {
 }
 
 export function PlayerTranscript({
+  recordingId,
   mediaUrl,
   contentType,
   segments,
 }: {
+  recordingId: string;
   mediaUrl: string;
   contentType: string;
   segments: Segment[];
@@ -30,6 +34,11 @@ export function PlayerTranscript({
   const paragraphRefs = useRef<(HTMLParagraphElement | null)[]>([]);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [mediaUnavailable, setMediaUnavailable] = useState(false);
+
+  const [query, setQuery] = useState("");
+  const [matchedIds, setMatchedIds] = useState<Set<string>>(new Set());
+  const [matchCount, setMatchCount] = useState(0);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   function handleTimeUpdate() {
     const el = mediaRef.current;
@@ -42,14 +51,59 @@ export function PlayerTranscript({
     paragraphRefs.current[activeIndex]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [activeIndex]);
 
-  function handleSeek(startMs: number) {
+  function seekTo(startMs: number) {
     const el = mediaRef.current;
     if (!el) return;
     el.currentTime = startMs / 1000;
-    el.play().catch(() => {
+  }
+
+  function handleParagraphClick(startMs: number) {
+    seekTo(startMs);
+    mediaRef.current?.play().catch(() => {
       // autoplay can be blocked by the browser — the user can still press play manually
     });
   }
+
+  useEffect(() => {
+    let cancelled = false;
+    const trimmed = query.trim();
+
+    const timer = setTimeout(async () => {
+      if (cancelled) return;
+
+      if (!trimmed) {
+        setMatchedIds(new Set());
+        setMatchCount(0);
+        setSearchError(null);
+        return;
+      }
+
+      try {
+        const result = await searchRecording(recordingId, trimmed);
+        if (cancelled) return;
+        setMatchedIds(new Set(result.matches.map((m) => m.segment_id)));
+        setMatchCount(result.total);
+        setSearchError(null);
+
+        const firstMatch = result.matches[0];
+        if (firstMatch) {
+          const index = segments.findIndex((s) => s.id === firstMatch.segment_id);
+          if (index >= 0) {
+            setActiveIndex(index);
+            seekTo(firstMatch.start_ms);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) setSearchError(err instanceof Error ? err.message : "Поиск не удался");
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, recordingId]);
 
   const isVideo = contentType.startsWith("video/");
 
@@ -79,19 +133,39 @@ export function PlayerTranscript({
         />
       )}
 
+      <div className="flex items-center gap-3">
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Поиск по записи…"
+          className="flex-1 rounded-full border border-solid border-black/[.08] px-4 py-1.5 text-sm dark:border-white/[.145] dark:bg-zinc-900"
+        />
+        {query.trim() && (
+          <span className="shrink-0 text-sm text-zinc-500">
+            {matchCount > 0 ? `${matchCount} совпадений` : "ничего не найдено"}
+          </span>
+        )}
+      </div>
+      {searchError && <p className="text-sm text-red-600">{searchError}</p>}
+
       <div className="flex flex-col gap-1">
         {segments.map((segment, index) => (
           <p
-            key={index}
+            key={segment.id}
             ref={(node) => {
               paragraphRefs.current[index] = node;
             }}
-            onClick={() => handleSeek(segment.start_ms)}
-            className={`cursor-pointer rounded px-2 py-1 transition-colors ${
-              index === activeIndex
-                ? "bg-foreground/10 text-black dark:bg-zinc-100/10 dark:text-zinc-50"
-                : "text-zinc-700 dark:text-zinc-300"
-            }`}
+            onClick={() => handleParagraphClick(segment.start_ms)}
+            className={[
+              "cursor-pointer rounded px-2 py-1 transition-colors",
+              matchedIds.has(segment.id) ? "bg-yellow-200/60 dark:bg-yellow-500/20" : "",
+              index === activeIndex ? "ring-2 ring-inset ring-foreground/40" : "",
+              matchedIds.has(segment.id) || index === activeIndex
+                ? "text-black dark:text-zinc-50"
+                : "text-zinc-700 dark:text-zinc-300",
+            ]
+              .filter(Boolean)
+              .join(" ")}
           >
             <span className="mr-2 font-mono text-sm text-zinc-400">{formatTimestamp(segment.start_ms)}</span>
             {segment.text}

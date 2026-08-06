@@ -8,11 +8,13 @@ import app.models  # noqa: F401 - registers tables on Base.metadata
 from app.api.routes_recordings import router as recordings_router
 from app.api.routes_uploads import router as uploads_router
 from app.db import Base, engine
+from app.search import apply_search_schema
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)
+    apply_search_schema(engine)
     yield
 
 

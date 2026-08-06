@@ -109,6 +109,7 @@ export default function RecordingPage({ params }: { params: Promise<{ id: string
         <section>
           <h2 className="mb-3 text-lg font-medium text-black dark:text-zinc-50">Транскрипт</h2>
           <PlayerTranscript
+            recordingId={recording.id}
             mediaUrl={recording.media_url}
             contentType={recording.content_type}
             segments={recording.segments}
