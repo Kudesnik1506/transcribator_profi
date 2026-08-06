@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta, timezone
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.models import Recording
+from app.config import settings
+from app.models import Recording, User
 
 # No DST in Russia since 2014, so a fixed UTC+3 offset is always correct.
 MSK = timezone(timedelta(hours=3))
@@ -36,3 +38,20 @@ def quota_exceeded_message(quota: int, now_utc: datetime) -> str:
         f"Достигнут дневной лимит в {quota} записи. "
         f"Квота обновится в {reset_msk.strftime('%H:%M')} по московскому времени."
     )
+
+
+def enforce_daily_quota(db: Session, user: User, now_utc: datetime) -> None:
+    """Reject with 429 once the user has hit their daily upload quota.
+
+    Called both before a multipart upload starts (so a user over quota
+    doesn't waste time/bandwidth uploading a file) and again when the
+    Recording row is created (closing the TOCTOU gap a long upload leaves
+    open).
+    """
+    if user.role == "admin":
+        return
+    if uploads_today(db, user.id, now_utc) >= settings.daily_upload_quota:
+        raise HTTPException(
+            status_code=429,
+            detail=quota_exceeded_message(settings.daily_upload_quota, now_utc),
+        )

@@ -1,10 +1,15 @@
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.api.deps import get_active_user
 from app.config import settings
+from app.db import get_db
+from app.models import User
+from app.quota import enforce_daily_quota
 from app.s3 import (
     UploadedPart,
     abort_multipart_upload,
@@ -31,7 +36,13 @@ class CreateMultipartUploadResponse(BaseModel):
 
 
 @router.post("/uploads/multipart", response_model=CreateMultipartUploadResponse)
-def create_multipart(payload: CreateMultipartUploadRequest) -> CreateMultipartUploadResponse:
+def create_multipart(
+    payload: CreateMultipartUploadRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_active_user),
+) -> CreateMultipartUploadResponse:
+    enforce_daily_quota(db, user, datetime.now(timezone.utc))
+
     if payload.size_bytes <= 0:
         raise HTTPException(status_code=422, detail="некорректный размер файла")
     if payload.size_bytes > settings.max_upload_size_bytes:

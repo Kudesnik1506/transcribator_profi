@@ -6,9 +6,10 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import app.api.routes_uploads as routes_uploads
-import app.models  # noqa: F401 - registers tables on Base.metadata
 from app.api.main import app
+from app.config import settings
 from app.db import Base, get_db
+from app.models import Recording  # also registers all tables on Base.metadata
 from app.s3 import UploadedPart
 
 
@@ -143,6 +144,41 @@ def test_create_multipart_returns_clean_error_on_s3_failure(client, monkeypatch,
 
     assert response.status_code == 502
     assert "detail" in response.json()
+
+
+def test_create_multipart_rejects_when_quota_exceeded(client, db_session, auth_headers, active_user):
+    for i in range(settings.daily_upload_quota):
+        db_session.add(
+            Recording(user_id=active_user.id, original_filename=f"f{i}.mp4", s3_key_media=f"k{i}", status="queued")
+        )
+    db_session.commit()
+
+    response = client.post(
+        "/uploads/multipart",
+        json={"filename": "big.mp4", "content_type": "video/mp4", "size_bytes": 1000},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 429
+    assert "лимит" in response.json()["detail"].lower()
+
+
+def test_create_multipart_admin_not_limited_by_quota(client, db_session, monkeypatch, admin_auth_headers, admin_user):
+    monkeypatch.setattr(routes_uploads, "create_multipart_upload", lambda key, content_type: "upload-123")
+
+    for i in range(settings.daily_upload_quota):
+        db_session.add(
+            Recording(user_id=admin_user.id, original_filename=f"f{i}.mp4", s3_key_media=f"k{i}", status="queued")
+        )
+    db_session.commit()
+
+    response = client.post(
+        "/uploads/multipart",
+        json={"filename": "big.mp4", "content_type": "video/mp4", "size_bytes": 1000},
+        headers=admin_auth_headers,
+    )
+
+    assert response.status_code == 200
 
 
 def test_abort_multipart(client, monkeypatch, auth_headers):
