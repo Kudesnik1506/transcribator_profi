@@ -40,5 +40,9 @@ class Settings(BaseSettings):
     # the pre-selected radio too — no frontend code change needed (D15).
     default_processing_mode: str = "deferred"
 
+    # Second safety net after moderation: caps spend even from an already-
+    # approved user who starts uploading in bulk. Calendar day, MSK.
+    daily_upload_quota: int = 3
+
 
 settings = Settings()

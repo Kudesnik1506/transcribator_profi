@@ -68,6 +68,10 @@ async function apiFetch<T>(path: string, label: string, init?: RequestInit): Pro
     if (response.status === 413) {
       throw new Error("файл больше допустимого размера");
     }
+    if (response.status === 429) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.detail ?? "превышен дневной лимит загрузок");
+    }
     throw new Error(`${label} failed: ${response.status}`);
   }
   if (response.status === 204) {

@@ -301,3 +301,52 @@ def test_list_recordings_excludes_other_users_recordings(client, db_session, aut
     response = client.get("/recordings", headers=auth_headers)
 
     assert response.json() == []
+
+
+def test_create_recording_rejects_fourth_upload_over_quota(client, db_session, auth_headers, active_user):
+    from app.config import settings
+
+    for i in range(settings.daily_upload_quota):
+        db_session.add(
+            Recording(user_id=active_user.id, original_filename=f"f{i}.mp4", s3_key_media=f"k{i}", status="queued")
+        )
+    db_session.commit()
+
+    response = client.post(
+        "/recordings", json={"s3_key": "k4", "original_filename": "f4.mp4"}, headers=auth_headers
+    )
+
+    assert response.status_code == 429
+    assert "лимит" in response.json()["detail"].lower()
+
+
+def test_create_recording_failed_uploads_dont_count_against_quota(client, db_session, auth_headers, active_user):
+    from app.config import settings
+
+    for i in range(settings.daily_upload_quota):
+        db_session.add(
+            Recording(user_id=active_user.id, original_filename=f"f{i}.mp4", s3_key_media=f"k{i}", status="failed")
+        )
+    db_session.commit()
+
+    response = client.post(
+        "/recordings", json={"s3_key": "k4", "original_filename": "f4.mp4"}, headers=auth_headers
+    )
+
+    assert response.status_code == 201
+
+
+def test_create_recording_admin_not_limited_by_quota(client, db_session, admin_auth_headers, admin_user):
+    from app.config import settings
+
+    for i in range(settings.daily_upload_quota):
+        db_session.add(
+            Recording(user_id=admin_user.id, original_filename=f"f{i}.mp4", s3_key_media=f"k{i}", status="queued")
+        )
+    db_session.commit()
+
+    response = client.post(
+        "/recordings", json={"s3_key": "k4", "original_filename": "f4.mp4"}, headers=admin_auth_headers
+    )
+
+    assert response.status_code == 201

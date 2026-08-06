@@ -17,3 +17,18 @@ def active_user(db_session):
 @pytest.fixture
 def auth_headers(active_user):
     return {"Authorization": f"Bearer {create_access_token(active_user.id)}"}
+
+
+@pytest.fixture
+def admin_user(db_session):
+    user = User(
+        email="admin@example.com", password_hash=hash_password("password123"), role="admin", status="active"
+    )
+    db_session.add(user)
+    db_session.commit()
+    return user
+
+
+@pytest.fixture
+def admin_auth_headers(admin_user):
+    return {"Authorization": f"Bearer {create_access_token(admin_user.id)}"}

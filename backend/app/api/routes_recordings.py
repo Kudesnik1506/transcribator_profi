@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -11,6 +11,7 @@ from app.config import settings
 from app.db import SessionLocal, get_db
 from app.export import build_docx, build_srt, build_txt, content_disposition, export_filename
 from app.models import Message, Recording, Segment, User
+from app.quota import quota_exceeded_message, uploads_today
 from app.queue import get_queue
 from app.s3 import presign_get_url
 from app.search import search_segments
@@ -134,6 +135,14 @@ async def create_recording(
     queue=Depends(get_queue),
     user: User = Depends(get_active_user),
 ) -> RecordingResponse:
+    if user.role != "admin":
+        now_utc = datetime.now(timezone.utc)
+        if uploads_today(db, user.id, now_utc) >= settings.daily_upload_quota:
+            raise HTTPException(
+                status_code=429,
+                detail=quota_exceeded_message(settings.daily_upload_quota, now_utc),
+            )
+
     recording = Recording(
         user_id=user.id,
         original_filename=payload.original_filename,
