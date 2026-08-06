@@ -81,6 +81,31 @@ def test_get_recording_returns_segments_and_summary(client, db_session):
     assert body["summary"] == {"items": ["п1"]}
 
 
+def test_get_recording_returns_media_url_and_content_type(client, db_session):
+    recording = Recording(
+        original_filename="f.mp4", s3_key_media="media/f.mp4", content_type="video/mp4", status="done"
+    )
+    db_session.add(recording)
+    db_session.commit()
+
+    response = client.get(f"/recordings/{recording.id}")
+
+    body = response.json()
+    assert body["content_type"] == "video/mp4"
+    assert body["media_url"].startswith("http")
+    assert "f.mp4" in body["media_url"]
+
+
+def test_create_recording_persists_content_type(client, db_session):
+    response = client.post(
+        "/recordings",
+        json={"s3_key": "media/abc-file.mp4", "original_filename": "file.mp4", "content_type": "video/mp4"},
+    )
+
+    saved = db_session.get(Recording, response.json()["id"])
+    assert saved.content_type == "video/mp4"
+
+
 def test_get_recording_404_when_missing(client):
     response = client.get("/recordings/does-not-exist")
 

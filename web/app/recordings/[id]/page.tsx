@@ -6,13 +6,7 @@ import { getRecording, retryRecording, type RecordingDetail } from "@/lib/api";
 import { IN_PROGRESS_STATUSES, TERMINAL_STATUSES, statusLabel } from "@/lib/recordingStatus";
 
 import { Dialog } from "./Dialog";
-
-function formatTimestamp(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-}
+import { PlayerTranscript } from "./PlayerTranscript";
 
 export default function RecordingPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -114,14 +108,11 @@ export default function RecordingPage({ params }: { params: Promise<{ id: string
       {recording.segments.length > 0 && (
         <section>
           <h2 className="mb-3 text-lg font-medium text-black dark:text-zinc-50">Транскрипт</h2>
-          <div className="flex flex-col gap-2">
-            {recording.segments.map((segment, index) => (
-              <p key={index} className="text-zinc-700 dark:text-zinc-300">
-                <span className="mr-2 font-mono text-sm text-zinc-400">{formatTimestamp(segment.start_ms)}</span>
-                {segment.text}
-              </p>
-            ))}
-          </div>
+          <PlayerTranscript
+            mediaUrl={recording.media_url}
+            contentType={recording.content_type}
+            segments={recording.segments}
+          />
         </section>
       )}
 

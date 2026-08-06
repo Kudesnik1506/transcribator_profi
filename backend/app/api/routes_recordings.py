@@ -9,6 +9,7 @@ from app.config import settings
 from app.db import SessionLocal, get_db
 from app.models import Message, Recording, Segment
 from app.queue import get_queue
+from app.s3 import presign_get_url
 from app.worker.ai_gateway_client import stream_answer
 from app.worker.dialog import TranscriptTooLongError, build_dialog_messages
 
@@ -18,6 +19,7 @@ router = APIRouter()
 class CreateRecordingRequest(BaseModel):
     s3_key: str
     original_filename: str
+    content_type: str = "application/octet-stream"
 
 
 class RecordingResponse(BaseModel):
@@ -40,6 +42,8 @@ class RecordingDetailResponse(BaseModel):
     status: str
     progress_percent: int
     original_filename: str
+    content_type: str
+    media_url: str
     error_message: str | None
     segments: list[SegmentResponse]
     summary: SummaryResponse | None
@@ -87,6 +91,7 @@ async def create_recording(
     recording = Recording(
         original_filename=payload.original_filename,
         s3_key_media=payload.s3_key,
+        content_type=payload.content_type,
         status="queued",
     )
     db.add(recording)
@@ -110,6 +115,8 @@ def get_recording(recording_id: str, db: Session = Depends(get_db)) -> Recording
         status=recording.status,
         progress_percent=recording.progress_percent,
         original_filename=recording.original_filename,
+        content_type=recording.content_type,
+        media_url=presign_get_url(recording.s3_key_media),
         error_message=recording.error_message,
         segments=[SegmentResponse(start_ms=s.start_ms, end_ms=s.end_ms, text=s.text) for s in segments],
         summary=SummaryResponse(items=recording.summary.items) if recording.summary else None,

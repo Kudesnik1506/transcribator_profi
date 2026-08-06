@@ -67,7 +67,7 @@ export default function UploadPage() {
       await completeMultipartUpload(session.uploadId, session.s3Key, completedParts);
       clearPendingUpload();
 
-      const recording = await createRecording(session.s3Key, file.name);
+      const recording = await createRecording(session.s3Key, file.name, file.type);
       router.push(`/recordings/${recording.id}`);
     } catch (error) {
       setState("error");

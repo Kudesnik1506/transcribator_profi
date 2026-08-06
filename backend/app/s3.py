@@ -22,6 +22,14 @@ def download_media(key: str, dest: Path) -> None:
     _client().download_file(settings.s3_bucket, key, str(dest))
 
 
+def presign_get_url(key: str, expires_in: int = 3600) -> str:
+    return _client().generate_presigned_url(
+        "get_object",
+        Params={"Bucket": settings.s3_bucket, "Key": key},
+        ExpiresIn=expires_in,
+    )
+
+
 @dataclass
 class UploadedPart:
     part_number: int

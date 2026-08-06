@@ -15,6 +15,8 @@ export type RecordingDetail = {
   status: string;
   progress_percent: number;
   original_filename: string;
+  content_type: string;
+  media_url: string;
   error_message: string | null;
   segments: RecordingSegment[];
   summary: RecordingSummary | null;
@@ -135,8 +137,16 @@ export function uploadPart(url: string, blob: Blob, onProgress: (loadedBytes: nu
   });
 }
 
-export function createRecording(s3Key: string, originalFilename: string): Promise<{ id: string; status: string }> {
-  return postJson("/recordings", "create recording", { s3_key: s3Key, original_filename: originalFilename });
+export function createRecording(
+  s3Key: string,
+  originalFilename: string,
+  contentType: string
+): Promise<{ id: string; status: string }> {
+  return postJson("/recordings", "create recording", {
+    s3_key: s3Key,
+    original_filename: originalFilename,
+    content_type: contentType,
+  });
 }
 
 export function getRecording(id: string): Promise<RecordingDetail> {
