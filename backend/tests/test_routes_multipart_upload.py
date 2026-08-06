@@ -1,19 +1,42 @@
+import pytest
 from botocore.exceptions import ClientError
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 import app.api.routes_uploads as routes_uploads
+import app.models  # noqa: F401 - registers tables on Base.metadata
 from app.api.main import app
+from app.db import Base, get_db
 from app.s3 import UploadedPart
 
-client = TestClient(app)
+
+@pytest.fixture
+def db_session():
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+    yield session
+    session.close()
 
 
-def test_create_multipart_returns_upload_id_and_part_plan(monkeypatch):
+@pytest.fixture
+def client(db_session):
+    app.dependency_overrides[get_db] = lambda: db_session
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+def test_create_multipart_returns_upload_id_and_part_plan(client, monkeypatch, auth_headers):
     monkeypatch.setattr(routes_uploads, "create_multipart_upload", lambda key, content_type: "upload-123")
 
     response = client.post(
         "/uploads/multipart",
         json={"filename": "big.mp4", "content_type": "video/mp4", "size_bytes": 40 * 1024 * 1024},
+        headers=auth_headers,
     )
 
     assert response.status_code == 200
@@ -24,51 +47,66 @@ def test_create_multipart_returns_upload_id_and_part_plan(monkeypatch):
     assert body["part_count"] == 3
 
 
-def test_create_multipart_rejects_oversized_file():
+def test_create_multipart_requires_auth(client):
+    response = client.post(
+        "/uploads/multipart",
+        json={"filename": "big.mp4", "content_type": "video/mp4", "size_bytes": 1000},
+    )
+
+    assert response.status_code == 401
+
+
+def test_create_multipart_rejects_oversized_file(client, auth_headers):
     response = client.post(
         "/uploads/multipart",
         json={"filename": "huge.mp4", "content_type": "video/mp4", "size_bytes": 3 * 1024**3},
+        headers=auth_headers,
     )
 
     assert response.status_code == 413
 
 
-def test_create_multipart_rejects_zero_size():
+def test_create_multipart_rejects_zero_size(client, auth_headers):
     response = client.post(
         "/uploads/multipart",
         json={"filename": "empty.mp4", "content_type": "video/mp4", "size_bytes": 0},
+        headers=auth_headers,
     )
 
     assert response.status_code == 422
 
 
-def test_get_part_upload_url(monkeypatch):
+def test_get_part_upload_url(client, monkeypatch, auth_headers):
     monkeypatch.setattr(
         routes_uploads,
         "presign_upload_part_url",
         lambda key, upload_id, part_number: f"https://s3.example/{key}?part={part_number}&uid={upload_id}",
     )
 
-    response = client.post("/uploads/multipart/upload-123/parts/2", json={"s3_key": "media/abc-big.mp4"})
+    response = client.post(
+        "/uploads/multipart/upload-123/parts/2", json={"s3_key": "media/abc-big.mp4"}, headers=auth_headers
+    )
 
     assert response.status_code == 200
     assert "part=2" in response.json()["upload_url"]
 
 
-def test_get_uploaded_parts(monkeypatch):
+def test_get_uploaded_parts(client, monkeypatch, auth_headers):
     monkeypatch.setattr(
         routes_uploads,
         "list_uploaded_parts",
         lambda key, upload_id: [UploadedPart(part_number=1, etag='"abc"', size=1000)],
     )
 
-    response = client.get("/uploads/multipart/upload-123/parts", params={"s3_key": "media/abc-big.mp4"})
+    response = client.get(
+        "/uploads/multipart/upload-123/parts", params={"s3_key": "media/abc-big.mp4"}, headers=auth_headers
+    )
 
     assert response.status_code == 200
     assert response.json() == [{"part_number": 1, "etag": '"abc"', "size": 1000}]
 
 
-def test_complete_multipart(monkeypatch):
+def test_complete_multipart(client, monkeypatch, auth_headers):
     calls = {}
 
     def fake_complete(key, upload_id, parts):
@@ -81,6 +119,7 @@ def test_complete_multipart(monkeypatch):
     response = client.post(
         "/uploads/multipart/upload-123/complete",
         json={"s3_key": "media/abc-big.mp4", "parts": [{"part_number": 1, "etag": '"abc"'}]},
+        headers=auth_headers,
     )
 
     assert response.status_code == 204
@@ -90,7 +129,7 @@ def test_complete_multipart(monkeypatch):
     assert calls["parts"][0].etag == '"abc"'
 
 
-def test_create_multipart_returns_clean_error_on_s3_failure(monkeypatch):
+def test_create_multipart_returns_clean_error_on_s3_failure(client, monkeypatch, auth_headers):
     def boom(key, content_type):
         raise ClientError({"Error": {"Code": "InvalidArgument", "Message": "bad request"}}, "CreateMultipartUpload")
 
@@ -99,13 +138,14 @@ def test_create_multipart_returns_clean_error_on_s3_failure(monkeypatch):
     response = client.post(
         "/uploads/multipart",
         json={"filename": "big.mp4", "content_type": "video/mp4", "size_bytes": 1000},
+        headers=auth_headers,
     )
 
     assert response.status_code == 502
     assert "detail" in response.json()
 
 
-def test_abort_multipart(monkeypatch):
+def test_abort_multipart(client, monkeypatch, auth_headers):
     calls = {}
     monkeypatch.setattr(
         routes_uploads,
@@ -113,7 +153,9 @@ def test_abort_multipart(monkeypatch):
         lambda key, upload_id: calls.update(key=key, upload_id=upload_id),
     )
 
-    response = client.post("/uploads/multipart/upload-123/abort", json={"s3_key": "media/abc-big.mp4"})
+    response = client.post(
+        "/uploads/multipart/upload-123/abort", json={"s3_key": "media/abc-big.mp4"}, headers=auth_headers
+    )
 
     assert response.status_code == 204
     assert calls == {"key": "media/abc-big.mp4", "upload_id": "upload-123"}

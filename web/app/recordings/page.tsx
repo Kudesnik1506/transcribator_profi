@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { listRecordings, type RecordingListItem } from "@/lib/api";
 import { TERMINAL_STATUSES, statusLabel } from "@/lib/recordingStatus";
+import { AuthGuard } from "@/components/AuthGuard";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString("ru-RU", {
@@ -17,6 +18,14 @@ function formatDate(iso: string): string {
 }
 
 export default function RecordingsListPage() {
+  return (
+    <AuthGuard>
+      <RecordingsListPageContent />
+    </AuthGuard>
+  );
+}
+
+function RecordingsListPageContent() {
   const [recordings, setRecordings] = useState<RecordingListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 

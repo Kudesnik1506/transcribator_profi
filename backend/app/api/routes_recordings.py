@@ -5,10 +5,11 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_active_user
 from app.config import settings
 from app.db import SessionLocal, get_db
 from app.export import build_docx, build_srt, build_txt, content_disposition, export_filename
-from app.models import Message, Recording, Segment
+from app.models import Message, Recording, Segment, User
 from app.queue import get_queue
 from app.s3 import presign_get_url
 from app.search import search_segments
@@ -28,6 +29,13 @@ EXPORT_BUILDERS = {
     "srt": lambda recording, segments: build_srt(segments).encode("utf-8"),
     "docx": lambda recording, segments: build_docx(recording.original_filename, segments),
 }
+
+
+def _get_owned_recording(db: Session, recording_id: str, user: User) -> Recording:
+    recording = db.get(Recording, recording_id)
+    if recording is None or recording.user_id != user.id:
+        raise HTTPException(status_code=404, detail="recording not found")
+    return recording
 
 
 class CreateRecordingRequest(BaseModel):
@@ -96,8 +104,12 @@ class SearchResponse(BaseModel):
 
 
 @router.get("/recordings", response_model=list[RecordingListItemResponse])
-def list_recordings(db: Session = Depends(get_db)) -> list[RecordingListItemResponse]:
-    recordings = db.query(Recording).order_by(Recording.created_at.desc()).all()
+def list_recordings(
+    db: Session = Depends(get_db), user: User = Depends(get_active_user)
+) -> list[RecordingListItemResponse]:
+    recordings = (
+        db.query(Recording).filter_by(user_id=user.id).order_by(Recording.created_at.desc()).all()
+    )
     return [
         RecordingListItemResponse(
             id=r.id,
@@ -115,8 +127,10 @@ async def create_recording(
     payload: CreateRecordingRequest,
     db: Session = Depends(get_db),
     queue=Depends(get_queue),
+    user: User = Depends(get_active_user),
 ) -> RecordingResponse:
     recording = Recording(
+        user_id=user.id,
         original_filename=payload.original_filename,
         s3_key_media=payload.s3_key,
         content_type=payload.content_type,
@@ -132,10 +146,10 @@ async def create_recording(
 
 
 @router.get("/recordings/{recording_id}", response_model=RecordingDetailResponse)
-def get_recording(recording_id: str, db: Session = Depends(get_db)) -> RecordingDetailResponse:
-    recording = db.get(Recording, recording_id)
-    if recording is None:
-        raise HTTPException(status_code=404, detail="recording not found")
+def get_recording(
+    recording_id: str, db: Session = Depends(get_db), user: User = Depends(get_active_user)
+) -> RecordingDetailResponse:
+    recording = _get_owned_recording(db, recording_id, user)
 
     segments = sorted(recording.segments, key=lambda s: s.start_ms)
     return RecordingDetailResponse(
@@ -152,10 +166,10 @@ def get_recording(recording_id: str, db: Session = Depends(get_db)) -> Recording
 
 
 @router.get("/recordings/{recording_id}/search", response_model=SearchResponse)
-def search_recording(recording_id: str, q: str, db: Session = Depends(get_db)) -> SearchResponse:
-    recording = db.get(Recording, recording_id)
-    if recording is None:
-        raise HTTPException(status_code=404, detail="recording not found")
+def search_recording(
+    recording_id: str, q: str, db: Session = Depends(get_db), user: User = Depends(get_active_user)
+) -> SearchResponse:
+    _get_owned_recording(db, recording_id, user)
 
     if not q.strip():
         return SearchResponse(query=q, total=0, matches=[])
@@ -172,13 +186,13 @@ def search_recording(recording_id: str, q: str, db: Session = Depends(get_db)) -
 
 
 @router.get("/recordings/{recording_id}/export/{fmt}")
-def export_recording(recording_id: str, fmt: str, db: Session = Depends(get_db)) -> Response:
+def export_recording(
+    recording_id: str, fmt: str, db: Session = Depends(get_db), user: User = Depends(get_active_user)
+) -> Response:
     if fmt not in EXPORT_CONTENT_TYPES:
         raise HTTPException(status_code=404, detail="unknown export format")
 
-    recording = db.get(Recording, recording_id)
-    if recording is None:
-        raise HTTPException(status_code=404, detail="recording not found")
+    recording = _get_owned_recording(db, recording_id, user)
 
     segments = sorted(recording.segments, key=lambda s: s.start_ms)
     if not segments:
@@ -199,10 +213,9 @@ async def retry_recording(
     recording_id: str,
     db: Session = Depends(get_db),
     queue=Depends(get_queue),
+    user: User = Depends(get_active_user),
 ) -> RecordingResponse:
-    recording = db.get(Recording, recording_id)
-    if recording is None:
-        raise HTTPException(status_code=404, detail="recording not found")
+    recording = _get_owned_recording(db, recording_id, user)
 
     await queue.enqueue_job("retry_failed_chunks_job", recording.id)
 
@@ -210,10 +223,10 @@ async def retry_recording(
 
 
 @router.get("/recordings/{recording_id}/messages", response_model=list[MessageResponse])
-def list_messages(recording_id: str, db: Session = Depends(get_db)) -> list[MessageResponse]:
-    recording = db.get(Recording, recording_id)
-    if recording is None:
-        raise HTTPException(status_code=404, detail="recording not found")
+def list_messages(
+    recording_id: str, db: Session = Depends(get_db), user: User = Depends(get_active_user)
+) -> list[MessageResponse]:
+    _get_owned_recording(db, recording_id, user)
 
     messages = (
         db.query(Message).filter_by(recording_id=recording_id).order_by(Message.created_at).all()
@@ -223,11 +236,12 @@ def list_messages(recording_id: str, db: Session = Depends(get_db)) -> list[Mess
 
 @router.post("/recordings/{recording_id}/messages")
 def ask_question(
-    recording_id: str, payload: AskQuestionRequest, db: Session = Depends(get_db)
+    recording_id: str,
+    payload: AskQuestionRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_active_user),
 ) -> StreamingResponse:
-    recording = db.get(Recording, recording_id)
-    if recording is None:
-        raise HTTPException(status_code=404, detail="recording not found")
+    recording = _get_owned_recording(db, recording_id, user)
 
     segments = sorted(recording.segments, key=lambda s: s.start_ms)
     if recording.status not in ("done", "partial") or not segments:

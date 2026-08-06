@@ -30,8 +30,8 @@ def client(db_session):
     app.dependency_overrides.clear()
 
 
-def test_search_recording_returns_matches(client, db_session, monkeypatch):
-    recording = Recording(original_filename="m.mp4", s3_key_media="k", status="done")
+def test_search_recording_returns_matches(client, db_session, monkeypatch, auth_headers, active_user):
+    recording = Recording(user_id=active_user.id, original_filename="m.mp4", s3_key_media="k", status="done")
     db_session.add(recording)
     db_session.commit()
 
@@ -41,7 +41,7 @@ def test_search_recording_returns_matches(client, db_session, monkeypatch):
         lambda db, rid, q: [SearchMatch(segment_id="s1", start_ms=1000, end_ms=2000, text="говорили про бюджет")],
     )
 
-    response = client.get(f"/recordings/{recording.id}/search", params={"q": "бюджет"})
+    response = client.get(f"/recordings/{recording.id}/search", params={"q": "бюджет"}, headers=auth_headers)
 
     assert response.status_code == 200
     body = response.json()
@@ -55,14 +55,14 @@ def test_search_recording_returns_matches(client, db_session, monkeypatch):
     }
 
 
-def test_search_recording_404_when_missing(client):
-    response = client.get("/recordings/does-not-exist/search", params={"q": "x"})
+def test_search_recording_404_when_missing(client, auth_headers):
+    response = client.get("/recordings/does-not-exist/search", params={"q": "x"}, headers=auth_headers)
 
     assert response.status_code == 404
 
 
-def test_search_recording_empty_query_returns_no_matches(client, db_session, monkeypatch):
-    recording = Recording(original_filename="m.mp4", s3_key_media="k", status="done")
+def test_search_recording_empty_query_returns_no_matches(client, db_session, monkeypatch, auth_headers, active_user):
+    recording = Recording(user_id=active_user.id, original_filename="m.mp4", s3_key_media="k", status="done")
     db_session.add(recording)
     db_session.commit()
 
@@ -71,17 +71,17 @@ def test_search_recording_empty_query_returns_no_matches(client, db_session, mon
 
     monkeypatch.setattr(routes_recordings, "search_segments", must_not_be_called)
 
-    response = client.get(f"/recordings/{recording.id}/search", params={"q": "   "})
+    response = client.get(f"/recordings/{recording.id}/search", params={"q": "   "}, headers=auth_headers)
 
     assert response.status_code == 200
     assert response.json()["total"] == 0
 
 
-def test_search_recording_requires_q_param(client, db_session):
-    recording = Recording(original_filename="m.mp4", s3_key_media="k", status="done")
+def test_search_recording_requires_q_param(client, db_session, auth_headers, active_user):
+    recording = Recording(user_id=active_user.id, original_filename="m.mp4", s3_key_media="k", status="done")
     db_session.add(recording)
     db_session.commit()
 
-    response = client.get(f"/recordings/{recording.id}/search")
+    response = client.get(f"/recordings/{recording.id}/search", headers=auth_headers)
 
     assert response.status_code == 422

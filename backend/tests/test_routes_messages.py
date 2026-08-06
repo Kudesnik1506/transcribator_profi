@@ -43,8 +43,8 @@ def client(db_session, engine, monkeypatch):
     app.dependency_overrides.clear()
 
 
-def test_ask_question_streams_answer_and_persists_messages(client, db_session, monkeypatch):
-    recording = Recording(original_filename="m.mp4", s3_key_media="k", status="done")
+def test_ask_question_streams_answer_and_persists_messages(client, db_session, monkeypatch, auth_headers, active_user):
+    recording = Recording(user_id=active_user.id, original_filename="m.mp4", s3_key_media="k", status="done")
     db_session.add(recording)
     db_session.commit()
     db_session.add(Segment(recording_id=recording.id, start_ms=0, end_ms=1000, text="говорили про бюджет"))
@@ -54,7 +54,9 @@ def test_ask_question_streams_answer_and_persists_messages(client, db_session, m
         routes_recordings, "stream_answer", lambda messages: iter(["Про", " бюджет", " сказали..."])
     )
 
-    response = client.post(f"/recordings/{recording.id}/messages", json={"content": "что сказали про бюджет?"})
+    response = client.post(
+        f"/recordings/{recording.id}/messages", json={"content": "что сказали про бюджет?"}, headers=auth_headers
+    )
 
     assert response.status_code == 200
     assert response.text == "Про бюджет сказали..."
@@ -69,8 +71,10 @@ def test_ask_question_streams_answer_and_persists_messages(client, db_session, m
     assert messages[1].content == "Про бюджет сказали..."
 
 
-def test_ask_question_streams_friendly_message_on_upstream_failure(client, db_session, monkeypatch):
-    recording = Recording(original_filename="m.mp4", s3_key_media="k", status="done")
+def test_ask_question_streams_friendly_message_on_upstream_failure(
+    client, db_session, monkeypatch, auth_headers, active_user
+):
+    recording = Recording(user_id=active_user.id, original_filename="m.mp4", s3_key_media="k", status="done")
     db_session.add(recording)
     db_session.commit()
     db_session.add(Segment(recording_id=recording.id, start_ms=0, end_ms=1000, text="текст"))
@@ -81,7 +85,7 @@ def test_ask_question_streams_friendly_message_on_upstream_failure(client, db_se
 
     monkeypatch.setattr(routes_recordings, "stream_answer", boom)
 
-    response = client.post(f"/recordings/{recording.id}/messages", json={"content": "вопрос"})
+    response = client.post(f"/recordings/{recording.id}/messages", json={"content": "вопрос"}, headers=auth_headers)
 
     assert response.status_code == 200
     assert "недоступен" in response.text.lower() or "не удалось" in response.text.lower()
@@ -93,36 +97,42 @@ def test_ask_question_streams_friendly_message_on_upstream_failure(client, db_se
     assert messages[1].role == "assistant"
 
 
-def test_ask_question_404_when_recording_missing(client):
-    response = client.post("/recordings/does-not-exist/messages", json={"content": "вопрос"})
+def test_ask_question_404_when_recording_missing(client, auth_headers):
+    response = client.post("/recordings/does-not-exist/messages", json={"content": "вопрос"}, headers=auth_headers)
 
     assert response.status_code == 404
 
 
-def test_ask_question_409_when_no_transcript_yet(client, db_session):
-    recording = Recording(original_filename="m.mp4", s3_key_media="k", status="transcribing")
+def test_ask_question_409_when_no_transcript_yet(client, db_session, auth_headers, active_user):
+    recording = Recording(
+        user_id=active_user.id, original_filename="m.mp4", s3_key_media="k", status="transcribing"
+    )
     db_session.add(recording)
     db_session.commit()
 
-    response = client.post(f"/recordings/{recording.id}/messages", json={"content": "вопрос"})
+    response = client.post(f"/recordings/{recording.id}/messages", json={"content": "вопрос"}, headers=auth_headers)
 
     assert response.status_code == 409
 
 
-def test_ask_question_409_when_still_transcribing_even_with_partial_segments(client, db_session):
-    recording = Recording(original_filename="m.mp4", s3_key_media="k", status="transcribing")
+def test_ask_question_409_when_still_transcribing_even_with_partial_segments(
+    client, db_session, auth_headers, active_user
+):
+    recording = Recording(
+        user_id=active_user.id, original_filename="m.mp4", s3_key_media="k", status="transcribing"
+    )
     db_session.add(recording)
     db_session.commit()
     db_session.add(Segment(recording_id=recording.id, start_ms=0, end_ms=1000, text="только первый кусок"))
     db_session.commit()
 
-    response = client.post(f"/recordings/{recording.id}/messages", json={"content": "вопрос"})
+    response = client.post(f"/recordings/{recording.id}/messages", json={"content": "вопрос"}, headers=auth_headers)
 
     assert response.status_code == 409
 
 
-def test_ask_question_allowed_when_partial_status(client, db_session, monkeypatch):
-    recording = Recording(original_filename="m.mp4", s3_key_media="k", status="partial")
+def test_ask_question_allowed_when_partial_status(client, db_session, monkeypatch, auth_headers, active_user):
+    recording = Recording(user_id=active_user.id, original_filename="m.mp4", s3_key_media="k", status="partial")
     db_session.add(recording)
     db_session.commit()
     db_session.add(Segment(recording_id=recording.id, start_ms=0, end_ms=1000, text="то что успели"))
@@ -130,13 +140,13 @@ def test_ask_question_allowed_when_partial_status(client, db_session, monkeypatc
 
     monkeypatch.setattr(routes_recordings, "stream_answer", lambda messages: iter(["ответ"]))
 
-    response = client.post(f"/recordings/{recording.id}/messages", json={"content": "вопрос"})
+    response = client.post(f"/recordings/{recording.id}/messages", json={"content": "вопрос"}, headers=auth_headers)
 
     assert response.status_code == 200
 
 
-def test_ask_question_413_when_transcript_too_long(client, db_session, monkeypatch):
-    recording = Recording(original_filename="m.mp4", s3_key_media="k", status="done")
+def test_ask_question_413_when_transcript_too_long(client, db_session, monkeypatch, auth_headers, active_user):
+    recording = Recording(user_id=active_user.id, original_filename="m.mp4", s3_key_media="k", status="done")
     db_session.add(recording)
     db_session.commit()
     db_session.add(Segment(recording_id=recording.id, start_ms=0, end_ms=1000, text="x" * 1_000_000))
@@ -144,20 +154,20 @@ def test_ask_question_413_when_transcript_too_long(client, db_session, monkeypat
 
     monkeypatch.setattr(settings, "max_dialog_context_tokens", 100)
 
-    response = client.post(f"/recordings/{recording.id}/messages", json={"content": "вопрос"})
+    response = client.post(f"/recordings/{recording.id}/messages", json={"content": "вопрос"}, headers=auth_headers)
 
     assert response.status_code == 413
 
 
-def test_list_messages_returns_history(client, db_session):
-    recording = Recording(original_filename="m.mp4", s3_key_media="k", status="done")
+def test_list_messages_returns_history(client, db_session, auth_headers, active_user):
+    recording = Recording(user_id=active_user.id, original_filename="m.mp4", s3_key_media="k", status="done")
     db_session.add(recording)
     db_session.commit()
     db_session.add(Message(recording_id=recording.id, role="user", content="вопрос 1"))
     db_session.add(Message(recording_id=recording.id, role="assistant", content="ответ 1"))
     db_session.commit()
 
-    response = client.get(f"/recordings/{recording.id}/messages")
+    response = client.get(f"/recordings/{recording.id}/messages", headers=auth_headers)
 
     assert response.status_code == 200
     body = response.json()
@@ -167,7 +177,7 @@ def test_list_messages_returns_history(client, db_session):
     assert body[1]["role"] == "assistant"
 
 
-def test_list_messages_404_when_recording_missing(client):
-    response = client.get("/recordings/does-not-exist/messages")
+def test_list_messages_404_when_recording_missing(client, auth_headers):
+    response = client.get("/recordings/does-not-exist/messages", headers=auth_headers)
 
     assert response.status_code == 404

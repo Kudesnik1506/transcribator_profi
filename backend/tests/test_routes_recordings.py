@@ -43,8 +43,12 @@ def client(db_session, fake_queue):
     app.dependency_overrides.clear()
 
 
-def test_create_recording_persists_and_enqueues_job(client, db_session, fake_queue):
-    response = client.post("/recordings", json={"s3_key": "media/abc-file.mp4", "original_filename": "file.mp4"})
+def test_create_recording_persists_and_enqueues_job(client, db_session, fake_queue, auth_headers, active_user):
+    response = client.post(
+        "/recordings",
+        json={"s3_key": "media/abc-file.mp4", "original_filename": "file.mp4"},
+        headers=auth_headers,
+    )
 
     assert response.status_code == 201
     body = response.json()
@@ -54,18 +58,25 @@ def test_create_recording_persists_and_enqueues_job(client, db_session, fake_que
     assert saved is not None
     assert saved.s3_key_media == "media/abc-file.mp4"
     assert saved.original_filename == "file.mp4"
+    assert saved.user_id == active_user.id
 
     assert fake_queue.enqueued == [("process_recording_job", (body["id"],))]
 
 
-def test_create_recording_rejects_missing_fields(client):
-    response = client.post("/recordings", json={})
+def test_create_recording_rejects_missing_fields(client, auth_headers):
+    response = client.post("/recordings", json={}, headers=auth_headers)
 
     assert response.status_code == 422
 
 
-def test_get_recording_returns_segments_and_summary(client, db_session):
-    recording = Recording(original_filename="f.mp4", s3_key_media="k", status="done")
+def test_create_recording_requires_auth(client):
+    response = client.post("/recordings", json={"s3_key": "k", "original_filename": "f.mp4"})
+
+    assert response.status_code == 401
+
+
+def test_get_recording_returns_segments_and_summary(client, db_session, auth_headers, active_user):
+    recording = Recording(user_id=active_user.id, original_filename="f.mp4", s3_key_media="k", status="done")
     db_session.add(recording)
     db_session.commit()
     segment = Segment(recording_id=recording.id, start_ms=0, end_ms=1000, text="привет")
@@ -73,7 +84,7 @@ def test_get_recording_returns_segments_and_summary(client, db_session):
     db_session.add(Summary(recording_id=recording.id, items=["п1"], model="gpt-4o-mini"))
     db_session.commit()
 
-    response = client.get(f"/recordings/{recording.id}")
+    response = client.get(f"/recordings/{recording.id}", headers=auth_headers)
 
     assert response.status_code == 200
     body = response.json()
@@ -82,14 +93,18 @@ def test_get_recording_returns_segments_and_summary(client, db_session):
     assert body["summary"] == {"items": ["п1"]}
 
 
-def test_get_recording_returns_media_url_and_content_type(client, db_session):
+def test_get_recording_returns_media_url_and_content_type(client, db_session, auth_headers, active_user):
     recording = Recording(
-        original_filename="f.mp4", s3_key_media="media/f.mp4", content_type="video/mp4", status="done"
+        user_id=active_user.id,
+        original_filename="f.mp4",
+        s3_key_media="media/f.mp4",
+        content_type="video/mp4",
+        status="done",
     )
     db_session.add(recording)
     db_session.commit()
 
-    response = client.get(f"/recordings/{recording.id}")
+    response = client.get(f"/recordings/{recording.id}", headers=auth_headers)
 
     body = response.json()
     assert body["content_type"] == "video/mp4"
@@ -97,82 +112,113 @@ def test_get_recording_returns_media_url_and_content_type(client, db_session):
     assert "f.mp4" in body["media_url"]
 
 
-def test_create_recording_persists_content_type(client, db_session):
+def test_create_recording_persists_content_type(client, db_session, auth_headers):
     response = client.post(
         "/recordings",
         json={"s3_key": "media/abc-file.mp4", "original_filename": "file.mp4", "content_type": "video/mp4"},
+        headers=auth_headers,
     )
 
     saved = db_session.get(Recording, response.json()["id"])
     assert saved.content_type == "video/mp4"
 
 
-def test_get_recording_404_when_missing(client):
-    response = client.get("/recordings/does-not-exist")
+def test_get_recording_404_when_missing(client, auth_headers):
+    response = client.get("/recordings/does-not-exist", headers=auth_headers)
 
     assert response.status_code == 404
 
 
-def test_get_recording_summary_null_when_not_ready(client, db_session):
-    recording = Recording(original_filename="f.mp4", s3_key_media="k", status="transcribing")
-    db_session.add(recording)
+def test_get_recording_404_when_not_owner(client, db_session, auth_headers):
+    other_owner_recording = Recording(user_id="someone-else", original_filename="f.mp4", s3_key_media="k")
+    db_session.add(other_owner_recording)
     db_session.commit()
 
-    response = client.get(f"/recordings/{recording.id}")
+    response = client.get(f"/recordings/{other_owner_recording.id}", headers=auth_headers)
 
-    assert response.json()["summary"] is None
+    assert response.status_code == 404
 
 
-def test_get_recording_returns_error_message_when_failed(client, db_session):
+def test_get_recording_summary_null_when_not_ready(client, db_session, auth_headers, active_user):
     recording = Recording(
-        original_filename="f.mp4", s3_key_media="k", status="failed", error_message="s3 is down"
+        user_id=active_user.id, original_filename="f.mp4", s3_key_media="k", status="transcribing"
     )
     db_session.add(recording)
     db_session.commit()
 
-    response = client.get(f"/recordings/{recording.id}")
+    response = client.get(f"/recordings/{recording.id}", headers=auth_headers)
+
+    assert response.json()["summary"] is None
+
+
+def test_get_recording_returns_error_message_when_failed(client, db_session, auth_headers, active_user):
+    recording = Recording(
+        user_id=active_user.id,
+        original_filename="f.mp4",
+        s3_key_media="k",
+        status="failed",
+        error_message="s3 is down",
+    )
+    db_session.add(recording)
+    db_session.commit()
+
+    response = client.get(f"/recordings/{recording.id}", headers=auth_headers)
 
     assert response.json()["error_message"] == "s3 is down"
 
 
-def test_get_recording_returns_progress_percent(client, db_session):
-    recording = Recording(original_filename="f.mp4", s3_key_media="k", status="transcribing", progress_percent=42)
+def test_get_recording_returns_progress_percent(client, db_session, auth_headers, active_user):
+    recording = Recording(
+        user_id=active_user.id,
+        original_filename="f.mp4",
+        s3_key_media="k",
+        status="transcribing",
+        progress_percent=42,
+    )
     db_session.add(recording)
     db_session.commit()
 
-    response = client.get(f"/recordings/{recording.id}")
+    response = client.get(f"/recordings/{recording.id}", headers=auth_headers)
 
     assert response.json()["progress_percent"] == 42
 
 
-def test_retry_recording_enqueues_retry_job(client, db_session, fake_queue):
-    recording = Recording(original_filename="f.mp4", s3_key_media="k", status="partial")
+def test_retry_recording_enqueues_retry_job(client, db_session, fake_queue, auth_headers, active_user):
+    recording = Recording(user_id=active_user.id, original_filename="f.mp4", s3_key_media="k", status="partial")
     db_session.add(recording)
     db_session.commit()
     db_session.add(Chunk(recording_id=recording.id, idx=0, start_sec=0, end_sec=900, status="failed"))
     db_session.commit()
 
-    response = client.post(f"/recordings/{recording.id}/retry")
+    response = client.post(f"/recordings/{recording.id}/retry", headers=auth_headers)
 
     assert response.status_code == 202
     assert fake_queue.enqueued == [("retry_failed_chunks_job", (recording.id,))]
 
 
-def test_retry_recording_404_when_missing(client):
-    response = client.post("/recordings/does-not-exist/retry")
+def test_retry_recording_404_when_missing(client, auth_headers):
+    response = client.post("/recordings/does-not-exist/retry", headers=auth_headers)
 
     assert response.status_code == 404
 
 
-def test_list_recordings_returns_newest_first(client, db_session):
-    older = Recording(original_filename="a.mp4", s3_key_media="k1", status="done", progress_percent=100)
+def test_list_recordings_returns_newest_first(client, db_session, auth_headers, active_user):
+    older = Recording(
+        user_id=active_user.id, original_filename="a.mp4", s3_key_media="k1", status="done", progress_percent=100
+    )
     db_session.add(older)
     db_session.commit()
-    newer = Recording(original_filename="b.mp4", s3_key_media="k2", status="transcribing", progress_percent=40)
+    newer = Recording(
+        user_id=active_user.id,
+        original_filename="b.mp4",
+        s3_key_media="k2",
+        status="transcribing",
+        progress_percent=40,
+    )
     db_session.add(newer)
     db_session.commit()
 
-    response = client.get("/recordings")
+    response = client.get("/recordings", headers=auth_headers)
 
     assert response.status_code == 200
     body = response.json()
@@ -183,8 +229,17 @@ def test_list_recordings_returns_newest_first(client, db_session):
     assert "created_at" in body[0]
 
 
-def test_list_recordings_empty(client):
-    response = client.get("/recordings")
+def test_list_recordings_empty(client, auth_headers):
+    response = client.get("/recordings", headers=auth_headers)
 
     assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_list_recordings_excludes_other_users_recordings(client, db_session, auth_headers, active_user):
+    db_session.add(Recording(user_id="someone-else", original_filename="a.mp4", s3_key_media="k1"))
+    db_session.commit()
+
+    response = client.get("/recordings", headers=auth_headers)
+
     assert response.json() == []

@@ -5,9 +5,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 import app.models  # noqa: F401 - registers tables on Base.metadata
+from app.api.routes_auth import router as auth_router
 from app.api.routes_recordings import router as recordings_router
 from app.api.routes_uploads import router as uploads_router
-from app.db import Base, engine
+from app.auth import bootstrap_admin_user
+from app.config import settings
+from app.db import Base, SessionLocal, engine
 from app.search import apply_search_schema
 
 
@@ -15,11 +18,19 @@ from app.search import apply_search_schema
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)
     apply_search_schema(engine)
+
+    db = SessionLocal()
+    try:
+        bootstrap_admin_user(db, settings.admin_email, settings.admin_password)
+    finally:
+        db.close()
+
     yield
 
 
 app = FastAPI(title="Транскрибатор API", lifespan=lifespan)
 
+app.include_router(auth_router)
 app.include_router(uploads_router)
 app.include_router(recordings_router)
 

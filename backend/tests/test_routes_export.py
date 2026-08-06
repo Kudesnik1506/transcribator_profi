@@ -32,8 +32,8 @@ def client(db_session):
 
 
 @pytest.fixture
-def recording_with_segments(db_session):
-    recording = Recording(original_filename="meeting.mp4", s3_key_media="k", status="done")
+def recording_with_segments(db_session, active_user):
+    recording = Recording(user_id=active_user.id, original_filename="meeting.mp4", s3_key_media="k", status="done")
     db_session.add(recording)
     db_session.commit()
     db_session.add(Segment(recording_id=recording.id, start_ms=0, end_ms=1500, text="Первый абзац"))
@@ -42,8 +42,8 @@ def recording_with_segments(db_session):
     return recording
 
 
-def test_export_txt_returns_plain_text(client, recording_with_segments):
-    response = client.get(f"/recordings/{recording_with_segments.id}/export/txt")
+def test_export_txt_returns_plain_text(client, recording_with_segments, auth_headers):
+    response = client.get(f"/recordings/{recording_with_segments.id}/export/txt", headers=auth_headers)
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/plain")
@@ -51,8 +51,8 @@ def test_export_txt_returns_plain_text(client, recording_with_segments):
     assert response.text == "Первый абзац\nВторой абзац"
 
 
-def test_export_srt_returns_subtitles_with_timecodes(client, recording_with_segments):
-    response = client.get(f"/recordings/{recording_with_segments.id}/export/srt")
+def test_export_srt_returns_subtitles_with_timecodes(client, recording_with_segments, auth_headers):
+    response = client.get(f"/recordings/{recording_with_segments.id}/export/srt", headers=auth_headers)
 
     assert response.status_code == 200
     assert "meeting.srt" in response.headers["content-disposition"]
@@ -60,8 +60,8 @@ def test_export_srt_returns_subtitles_with_timecodes(client, recording_with_segm
     assert "Первый абзац" in response.text
 
 
-def test_export_docx_returns_valid_document(client, recording_with_segments):
-    response = client.get(f"/recordings/{recording_with_segments.id}/export/docx")
+def test_export_docx_returns_valid_document(client, recording_with_segments, auth_headers):
+    response = client.get(f"/recordings/{recording_with_segments.id}/export/docx", headers=auth_headers)
 
     assert response.status_code == 200
     assert response.headers["content-type"] == (
@@ -75,26 +75,28 @@ def test_export_docx_returns_valid_document(client, recording_with_segments):
     assert "Второй абзац" in texts
 
 
-def test_export_unknown_format_404(client, recording_with_segments):
-    response = client.get(f"/recordings/{recording_with_segments.id}/export/pdf")
+def test_export_unknown_format_404(client, recording_with_segments, auth_headers):
+    response = client.get(f"/recordings/{recording_with_segments.id}/export/pdf", headers=auth_headers)
 
     assert response.status_code == 404
 
 
-def test_export_recording_missing_404(client):
-    response = client.get("/recordings/does-not-exist/export/txt")
+def test_export_recording_missing_404(client, auth_headers):
+    response = client.get("/recordings/does-not-exist/export/txt", headers=auth_headers)
 
     assert response.status_code == 404
 
 
-def test_export_filename_with_quote_does_not_break_header(client, db_session):
-    recording = Recording(original_filename='evil"name.mp4', s3_key_media="k", status="done")
+def test_export_filename_with_quote_does_not_break_header(client, db_session, auth_headers, active_user):
+    recording = Recording(
+        user_id=active_user.id, original_filename='evil"name.mp4', s3_key_media="k", status="done"
+    )
     db_session.add(recording)
     db_session.commit()
     db_session.add(Segment(recording_id=recording.id, start_ms=0, end_ms=1000, text="текст"))
     db_session.commit()
 
-    response = client.get(f"/recordings/{recording.id}/export/txt")
+    response = client.get(f"/recordings/{recording.id}/export/txt", headers=auth_headers)
 
     assert response.status_code == 200
     disposition = response.headers["content-disposition"]
@@ -102,28 +104,30 @@ def test_export_filename_with_quote_does_not_break_header(client, db_session):
     assert '"' not in ascii_part.split("=", 1)[1].strip()[1:-1]
 
 
-def test_export_filename_with_slash_is_percent_encoded(client, db_session):
-    recording = Recording(original_filename="a/b.mp4", s3_key_media="k", status="done")
+def test_export_filename_with_slash_is_percent_encoded(client, db_session, auth_headers, active_user):
+    recording = Recording(user_id=active_user.id, original_filename="a/b.mp4", s3_key_media="k", status="done")
     db_session.add(recording)
     db_session.commit()
     db_session.add(Segment(recording_id=recording.id, start_ms=0, end_ms=1000, text="текст"))
     db_session.commit()
 
-    response = client.get(f"/recordings/{recording.id}/export/txt")
+    response = client.get(f"/recordings/{recording.id}/export/txt", headers=auth_headers)
 
     disposition = response.headers["content-disposition"]
     utf8_part = disposition.split("filename*=UTF-8''")[1]
     assert "/" not in utf8_part
 
 
-def test_export_filename_with_control_chars_is_sanitized(client, db_session):
-    recording = Recording(original_filename="evil\r\nX-Injected: 1.mp4", s3_key_media="k", status="done")
+def test_export_filename_with_control_chars_is_sanitized(client, db_session, auth_headers, active_user):
+    recording = Recording(
+        user_id=active_user.id, original_filename="evil\r\nX-Injected: 1.mp4", s3_key_media="k", status="done"
+    )
     db_session.add(recording)
     db_session.commit()
     db_session.add(Segment(recording_id=recording.id, start_ms=0, end_ms=1000, text="текст"))
     db_session.commit()
 
-    response = client.get(f"/recordings/{recording.id}/export/txt")
+    response = client.get(f"/recordings/{recording.id}/export/txt", headers=auth_headers)
 
     assert response.status_code == 200
     disposition = response.headers["content-disposition"]
@@ -131,11 +135,13 @@ def test_export_filename_with_control_chars_is_sanitized(client, db_session):
     assert "\n" not in disposition
 
 
-def test_export_no_transcript_yet_409(client, db_session):
-    recording = Recording(original_filename="meeting.mp4", s3_key_media="k", status="transcribing")
+def test_export_no_transcript_yet_409(client, db_session, auth_headers, active_user):
+    recording = Recording(
+        user_id=active_user.id, original_filename="meeting.mp4", s3_key_media="k", status="transcribing"
+    )
     db_session.add(recording)
     db_session.commit()
 
-    response = client.get(f"/recordings/{recording.id}/export/txt")
+    response = client.get(f"/recordings/{recording.id}/export/txt", headers=auth_headers)
 
     assert response.status_code == 409

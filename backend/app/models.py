@@ -15,10 +15,23 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    email: Mapped[str] = mapped_column(String, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String)
+    role: Mapped[str] = mapped_column(String, default="user")
+    status: Mapped[str] = mapped_column(String, default="pending")
+    telegram_chat_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+
+
 class Recording(Base):
     __tablename__ = "recordings"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     original_filename: Mapped[str] = mapped_column(String)
     s3_key_media: Mapped[str] = mapped_column(String)
     content_type: Mapped[str] = mapped_column(String, default="application/octet-stream")

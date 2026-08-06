@@ -1,3 +1,5 @@
+import { authHeader, clearToken } from "@/lib/auth";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export type RecordingSegment = {
@@ -48,9 +50,19 @@ export type PartUrlResponse = {
   upload_url: string;
 };
 
+function handleUnauthorized(response: Response): void {
+  if (response.status !== 401) return;
+  clearToken();
+  if (typeof window !== "undefined") window.location.href = "/login";
+}
+
 async function apiFetch<T>(path: string, label: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, init);
+  const response = await fetch(`${API_URL}${path}`, {
+    ...init,
+    headers: { ...authHeader(), ...init?.headers },
+  });
   if (!response.ok) {
+    handleUnauthorized(response);
     if (response.status === 413) {
       throw new Error("файл больше допустимого размера");
     }
@@ -156,8 +168,28 @@ export function getRecording(id: string): Promise<RecordingDetail> {
 
 export type ExportFormat = "txt" | "srt" | "docx";
 
-export function exportUrl(id: string, format: ExportFormat): string {
-  return `${API_URL}/recordings/${id}/export/${format}`;
+// A plain <a href> download link can't carry the Authorization header, so
+// the export endpoint (like every other recording route) requires it —
+// fetch as a blob instead and trigger the browser's download via a
+// throwaway object URL.
+export async function downloadExport(id: string, format: ExportFormat, filenameHint: string): Promise<void> {
+  const response = await fetch(`${API_URL}/recordings/${id}/export/${format}`, { headers: authHeader() });
+  if (!response.ok) {
+    handleUnauthorized(response);
+    throw new Error(`export failed: ${response.status}`);
+  }
+
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const asciiMatch = disposition.match(/filename="([^"]+)"/);
+  const filename = asciiMatch?.[1] ?? `${filenameHint}.${format}`;
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 export type SearchMatch = {
@@ -205,10 +237,11 @@ export async function askQuestion(
 ): Promise<void> {
   const response = await fetch(`${API_URL}/recordings/${recordingId}/messages`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeader() },
     body: JSON.stringify({ content }),
   });
   if (!response.ok || !response.body) {
+    handleUnauthorized(response);
     if (response.status === 413) {
       throw new Error("транскрипт не помещается в контекст модели");
     }
@@ -225,4 +258,42 @@ export async function askQuestion(
     if (done) break;
     onDelta(decoder.decode(value, { stream: true }));
   }
+}
+
+export type CurrentUser = {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+};
+
+export async function register(email: string, password: string): Promise<{ id: string; status: string }> {
+  const response = await fetch(`${API_URL}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.detail ?? `registration failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function login(email: string, password: string): Promise<string> {
+  const response = await fetch(`${API_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.detail ?? `login failed: ${response.status}`);
+  }
+  const data = await response.json();
+  return data.access_token as string;
+}
+
+export function getMe(): Promise<CurrentUser> {
+  return apiFetch<CurrentUser>("/auth/me", "get current user");
 }

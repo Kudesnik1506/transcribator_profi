@@ -2,13 +2,22 @@
 
 import { use, useEffect, useState } from "react";
 
-import { exportUrl, getRecording, retryRecording, type RecordingDetail } from "@/lib/api";
+import { downloadExport, getRecording, retryRecording, type ExportFormat, type RecordingDetail } from "@/lib/api";
 import { IN_PROGRESS_STATUSES, TERMINAL_STATUSES, statusLabel } from "@/lib/recordingStatus";
+import { AuthGuard } from "@/components/AuthGuard";
 
 import { Dialog } from "./Dialog";
 import { PlayerTranscript } from "./PlayerTranscript";
 
 export default function RecordingPage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <AuthGuard>
+      <RecordingPageContent params={params} />
+    </AuthGuard>
+  );
+}
+
+function RecordingPageContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [recording, setRecording] = useState<RecordingDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +46,15 @@ export default function RecordingPage({ params }: { params: Promise<{ id: string
       clearTimeout(timer);
     };
   }, [id]);
+
+  async function handleExport(format: ExportFormat) {
+    if (!recording) return;
+    try {
+      await downloadExport(recording.id, format, recording.original_filename);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось скачать файл");
+    }
+  }
 
   async function handleRetry() {
     setRetrying(true);
@@ -111,13 +129,13 @@ export default function RecordingPage({ params }: { params: Promise<{ id: string
             <h2 className="text-lg font-medium text-black dark:text-zinc-50">Транскрипт</h2>
             <div className="flex gap-2">
               {(["txt", "srt", "docx"] as const).map((format) => (
-                <a
+                <button
                   key={format}
-                  href={exportUrl(recording.id, format)}
+                  onClick={() => handleExport(format)}
                   className="rounded-full border border-solid border-black/[.08] px-3 py-1 text-xs transition-colors hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a]"
                 >
                   .{format}
-                </a>
+                </button>
               ))}
             </div>
           </div>

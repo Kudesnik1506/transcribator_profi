@@ -1,8 +1,9 @@
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from app.api.deps import get_active_user
 from app.config import settings
 from app.s3 import (
     UploadedPart,
@@ -13,7 +14,7 @@ from app.s3 import (
     presign_upload_part_url,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_active_user)])
 
 
 class CreateMultipartUploadRequest(BaseModel):

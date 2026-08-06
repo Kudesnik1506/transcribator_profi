@@ -14,10 +14,20 @@ import {
   uploadPart,
 } from "@/lib/api";
 import { clearPendingUpload, computeParts, loadPendingUpload, missingParts, resolveUploadSession } from "@/lib/multipartUpload";
+import { AuthGuard } from "@/components/AuthGuard";
+import { clearToken } from "@/lib/auth";
 
 type UploadState = "idle" | "uploading" | "error";
 
 export default function UploadPage() {
+  return (
+    <AuthGuard>
+      <UploadPageContent />
+    </AuthGuard>
+  );
+}
+
+function UploadPageContent() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [state, setState] = useState<UploadState>("idle");
@@ -138,9 +148,20 @@ export default function UploadPage() {
         </div>
 
         {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
-        <Link href="/recordings" className="text-sm text-zinc-500 underline">
-          Мои Записи
-        </Link>
+        <div className="flex gap-4">
+          <Link href="/recordings" className="text-sm text-zinc-500 underline">
+            Мои Записи
+          </Link>
+          <button
+            onClick={() => {
+              clearToken();
+              router.push("/login");
+            }}
+            className="text-sm text-zinc-500 underline"
+          >
+            Выйти
+          </button>
+        </div>
       </main>
     </div>
   );

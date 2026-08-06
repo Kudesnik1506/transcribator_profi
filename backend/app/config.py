@@ -24,5 +24,16 @@ class Settings(BaseSettings):
     timeweb_ai_gateway_model: str = "gpt-4o-mini"
     max_dialog_context_tokens: int = 100_000
 
+    # Must be a real random secret in production — this default is dev-only
+    # and intentionally obvious so it's never mistaken for a real value.
+    jwt_secret_key: str = "insecure-dev-secret-change-me"
+    jwt_expires_minutes: int = 60 * 24 * 7
+
+    # If set, an admin user is created at startup if one with this email
+    # doesn't exist yet — the only way to get a first Administrator in,
+    # since registration always creates a pending regular user.
+    admin_email: str = ""
+    admin_password: str = ""
+
 
 settings = Settings()
