@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { listRecordings, type RecordingListItem } from "@/lib/api";
-import { TERMINAL_STATUSES, statusLabel } from "@/lib/recordingStatus";
+import { TERMINAL_STATUSES, modeLabel, statusLabel } from "@/lib/recordingStatus";
 import { AuthGuard } from "@/components/AuthGuard";
 
 function formatDate(iso: string): string {
@@ -90,7 +90,9 @@ function RecordingsListPageContent() {
             >
               <div className="min-w-0">
                 <p className="truncate font-medium text-black dark:text-zinc-50">{recording.original_filename}</p>
-                <p className="text-sm text-zinc-500">{formatDate(recording.created_at)}</p>
+                <p className="text-sm text-zinc-500">
+                  {formatDate(recording.created_at)} · {modeLabel(recording.mode)}
+                </p>
               </div>
               <div className="shrink-0 text-right">
                 <p className="text-sm text-zinc-700 dark:text-zinc-300">{statusLabel(recording.status)}</p>

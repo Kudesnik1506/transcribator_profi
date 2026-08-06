@@ -44,8 +44,8 @@ def _setup_common_mocks(monkeypatch, chunks):
     monkeypatch.setattr(tasks, "sleep", lambda s: None)
 
 
-def _make_recording(db_session) -> Recording:
-    recording = Recording(original_filename="m.mp4", s3_key_media="media/m.mp4", status="queued")
+def _make_recording(db_session, mode: str = "deferred") -> Recording:
+    recording = Recording(original_filename="m.mp4", s3_key_media="media/m.mp4", status="queued", mode=mode)
     db_session.add(recording)
     db_session.commit()
     return recording
@@ -56,7 +56,7 @@ def test_process_recording_all_chunks_succeed(db_session, tmp_path, monkeypatch)
     chunks = _fake_chunks(tmp_path, 2)
     _setup_common_mocks(monkeypatch, chunks)
     monkeypatch.setattr(
-        tasks, "transcribe", lambda audio_bytes: [SpeechKitSegment(start_ms=0, end_ms=1000, text="привет")]
+        tasks, "transcribe", lambda audio_bytes, model, **kwargs: [SpeechKitSegment(start_ms=0, end_ms=1000, text="привет")]
     )
     monkeypatch.setattr(tasks, "summarize", lambda transcript: ["пункт"])
 
@@ -85,7 +85,7 @@ def test_process_recording_partial_when_some_chunks_fail_after_retries(db_sessio
 
     calls = {"n": 0}
 
-    def transcribe_side_effect(audio_bytes):
+    def transcribe_side_effect(audio_bytes, model, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
             return [SpeechKitSegment(start_ms=0, end_ms=1000, text="ok")]
@@ -121,7 +121,7 @@ def test_process_recording_failed_when_all_chunks_fail(db_session, tmp_path, mon
     chunks = _fake_chunks(tmp_path, 1)
     _setup_common_mocks(monkeypatch, chunks)
 
-    def always_fail(audio_bytes):
+    def always_fail(audio_bytes, model, **kwargs):
         raise RuntimeError("speechkit boom")
 
     monkeypatch.setattr(tasks, "transcribe", always_fail)
@@ -134,6 +134,46 @@ def test_process_recording_failed_when_all_chunks_fail(db_session, tmp_path, mon
     assert recording.error_message
 
     assert db_session.query(Summary).filter_by(recording_id=recording.id).first() is None
+
+
+def test_process_recording_passes_speechkit_model_matching_recording_mode(db_session, tmp_path, monkeypatch):
+    recording = _make_recording(db_session, mode="fast")
+    chunks = _fake_chunks(tmp_path, 1)
+    _setup_common_mocks(monkeypatch, chunks)
+
+    seen_models = []
+
+    def capture_model(audio_bytes, model, **kwargs):
+        seen_models.append(model)
+        return [SpeechKitSegment(start_ms=0, end_ms=1000, text="ok")]
+
+    monkeypatch.setattr(tasks, "transcribe", capture_model)
+    monkeypatch.setattr(tasks, "summarize", lambda transcript: ["пункт"])
+
+    tasks.process_recording(db_session, recording.id, work_dir=tmp_path)
+
+    assert seen_models == ["general"]
+
+
+def test_process_recording_uses_deferred_poll_budget_for_deferred_mode(db_session, tmp_path, monkeypatch):
+    recording = _make_recording(db_session, mode="deferred")
+    chunks = _fake_chunks(tmp_path, 1)
+    _setup_common_mocks(monkeypatch, chunks)
+
+    seen_kwargs = []
+
+    def capture_poll_config(audio_bytes, model, **kwargs):
+        seen_kwargs.append(kwargs)
+        return [SpeechKitSegment(start_ms=0, end_ms=1000, text="ok")]
+
+    monkeypatch.setattr(tasks, "transcribe", capture_poll_config)
+    monkeypatch.setattr(tasks, "summarize", lambda transcript: ["пункт"])
+
+    tasks.process_recording(db_session, recording.id, work_dir=tmp_path)
+
+    poll_interval_sec = seen_kwargs[0]["poll_interval_sec"]
+    max_polls = seen_kwargs[0]["max_polls"]
+    assert poll_interval_sec * max_polls >= 24 * 60 * 60
 
 
 def test_retry_failed_chunks_reprocesses_only_failed_ones(db_session, tmp_path, monkeypatch):
@@ -153,7 +193,7 @@ def test_retry_failed_chunks_reprocesses_only_failed_ones(db_session, tmp_path, 
     monkeypatch.setattr(
         tasks,
         "transcribe",
-        lambda audio_bytes: [SpeechKitSegment(start_ms=0, end_ms=500, text="восстановлено")],
+        lambda audio_bytes, model, **kwargs: [SpeechKitSegment(start_ms=0, end_ms=500, text="восстановлено")],
     )
     monkeypatch.setattr(tasks, "summarize", lambda transcript: ["новая сводка"])
 
@@ -231,7 +271,7 @@ def test_process_recording_sets_summarizing_status_before_generating_summary(db_
     chunks = _fake_chunks(tmp_path, 1)
     _setup_common_mocks(monkeypatch, chunks)
     monkeypatch.setattr(
-        tasks, "transcribe", lambda audio_bytes: [SpeechKitSegment(start_ms=0, end_ms=1000, text="ok")]
+        tasks, "transcribe", lambda audio_bytes, model, **kwargs: [SpeechKitSegment(start_ms=0, end_ms=1000, text="ok")]
     )
 
     observed = {}
@@ -264,7 +304,7 @@ def test_retry_failed_chunks_updates_existing_summary_instead_of_duplicating(db_
     monkeypatch.setattr(
         tasks,
         "transcribe",
-        lambda audio_bytes: [SpeechKitSegment(start_ms=0, end_ms=500, text="восстановлено")],
+        lambda audio_bytes, model, **kwargs: [SpeechKitSegment(start_ms=0, end_ms=500, text="восстановлено")],
     )
     monkeypatch.setattr(tasks, "summarize", lambda transcript: ["новая сводка"])
 

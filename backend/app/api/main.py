@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 import app.models  # noqa: F401 - registers tables on Base.metadata
 from app.api.routes_auth import router as auth_router
+from app.api.routes_config import router as config_router
 from app.api.routes_recordings import router as recordings_router
 from app.api.routes_uploads import router as uploads_router
 from app.auth import bootstrap_admin_user
@@ -31,6 +32,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Транскрибатор API", lifespan=lifespan)
 
 app.include_router(auth_router)
+app.include_router(config_router)
 app.include_router(uploads_router)
 app.include_router(recordings_router)
 

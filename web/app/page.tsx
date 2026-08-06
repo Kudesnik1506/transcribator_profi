@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   abortMultipartUpload,
@@ -10,8 +10,10 @@ import {
   createMultipartUpload,
   createRecording,
   getPartUploadUrl,
+  getPublicConfig,
   getUploadedParts,
   uploadPart,
+  type ProcessingMode,
 } from "@/lib/api";
 import { clearPendingUpload, computeParts, loadPendingUpload, missingParts, resolveUploadSession } from "@/lib/multipartUpload";
 import { AuthGuard } from "@/components/AuthGuard";
@@ -33,6 +35,15 @@ function UploadPageContent() {
   const [state, setState] = useState<UploadState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [progressPercent, setProgressPercent] = useState(0);
+  const [mode, setMode] = useState<ProcessingMode>("deferred");
+
+  useEffect(() => {
+    getPublicConfig()
+      .then((config) => setMode(config.default_processing_mode))
+      .catch(() => {
+        // config fetch failing isn't fatal — "deferred" is already a sane default
+      });
+  }, []);
 
   async function handleUpload() {
     if (!file) return;
@@ -77,7 +88,7 @@ function UploadPageContent() {
       await completeMultipartUpload(session.uploadId, session.s3Key, completedParts);
       clearPendingUpload();
 
-      const recording = await createRecording(session.s3Key, file.name, file.type);
+      const recording = await createRecording(session.s3Key, file.name, file.type, mode);
       router.push(`/recordings/${recording.id}`);
     } catch (error) {
       setState("error");
@@ -116,6 +127,39 @@ function UploadPageContent() {
           disabled={state === "uploading"}
           className="w-full text-sm text-zinc-700 dark:text-zinc-300"
         />
+
+        <div className="flex w-full flex-col gap-2">
+          <label className="flex items-start gap-2 rounded-lg border border-solid border-black/[.08] p-3 text-sm dark:border-white/[.145]">
+            <input
+              type="radio"
+              name="mode"
+              checked={mode === "deferred"}
+              onChange={() => setMode("deferred")}
+              disabled={state === "uploading"}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="font-medium text-black dark:text-zinc-50">В фоне (дешевле)</span>
+              <br />
+              <span className="text-zinc-500">Готово в течение суток, распознавание вчетверо дешевле.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 rounded-lg border border-solid border-black/[.08] p-3 text-sm dark:border-white/[.145]">
+            <input
+              type="radio"
+              name="mode"
+              checked={mode === "fast"}
+              onChange={() => setMode("fast")}
+              disabled={state === "uploading"}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="font-medium text-black dark:text-zinc-50">Сейчас</span>
+              <br />
+              <span className="text-zinc-500">Готово примерно за 30 минут, полная цена распознавания.</span>
+            </span>
+          </label>
+        </div>
 
         {state === "uploading" && (
           <div className="w-full">

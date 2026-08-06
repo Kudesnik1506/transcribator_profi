@@ -9,7 +9,7 @@ from app.s3 import download_media
 from app.worker.ai_gateway_client import summarize
 from app.worker.ffmpeg_extract import AudioChunk, extract_audio, split_audio_into_chunks
 from app.worker.retry import retry_with_backoff
-from app.worker.speechkit_client import transcribe
+from app.worker.speechkit_client import model_for_mode, poll_config_for_mode, transcribe
 from app.worker.timecodes import offset_segments
 
 CHUNK_DURATION_SEC = 900
@@ -109,7 +109,13 @@ def _process_chunk(db: Session, recording: Recording, chunk_row: Chunk, audio_ch
         chunk_row.attempts += 1
         db.commit()
         audio_bytes = audio_chunk.path.read_bytes()
-        return transcribe(audio_bytes)
+        poll_interval_sec, max_polls = poll_config_for_mode(recording.mode)
+        return transcribe(
+            audio_bytes,
+            model=model_for_mode(recording.mode),
+            poll_interval_sec=poll_interval_sec,
+            max_polls=max_polls,
+        )
 
     try:
         segments = retry_with_backoff(

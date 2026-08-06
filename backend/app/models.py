@@ -35,6 +35,7 @@ class Recording(Base):
     original_filename: Mapped[str] = mapped_column(String)
     s3_key_media: Mapped[str] = mapped_column(String)
     content_type: Mapped[str] = mapped_column(String, default="application/octet-stream")
+    mode: Mapped[str] = mapped_column(String, default="deferred")
     status: Mapped[str] = mapped_column(String, default="queued")
     progress_percent: Mapped[int] = mapped_column(default=0)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

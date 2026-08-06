@@ -35,5 +35,10 @@ class Settings(BaseSettings):
     admin_email: str = ""
     admin_password: str = ""
 
+    # "fast" (~30 min, full price) or "deferred" (up to 24h, ~4x cheaper).
+    # The frontend reads this via GET /config so changing it here changes
+    # the pre-selected radio too — no frontend code change needed (D15).
+    default_processing_mode: str = "deferred"
+
 
 settings = Settings()

@@ -16,6 +16,7 @@ export type RecordingSummary = {
 export type RecordingDetail = {
   id: string;
   status: string;
+  mode: string;
   progress_percent: number;
   original_filename: string;
   content_type: string;
@@ -29,6 +30,7 @@ export type RecordingListItem = {
   id: string;
   original_filename: string;
   status: string;
+  mode: string;
   progress_percent: number;
   created_at: string;
 };
@@ -150,16 +152,24 @@ export function uploadPart(url: string, blob: Blob, onProgress: (loadedBytes: nu
   });
 }
 
+export type ProcessingMode = "fast" | "deferred";
+
 export function createRecording(
   s3Key: string,
   originalFilename: string,
-  contentType: string
+  contentType: string,
+  mode: ProcessingMode
 ): Promise<{ id: string; status: string }> {
   return postJson("/recordings", "create recording", {
     s3_key: s3Key,
     original_filename: originalFilename,
     content_type: contentType,
+    mode,
   });
+}
+
+export function getPublicConfig(): Promise<{ default_processing_mode: ProcessingMode }> {
+  return apiFetch("/config", "get config");
 }
 
 export function getRecording(id: string): Promise<RecordingDetail> {

@@ -1,10 +1,61 @@
+import json
+
 import httpx
 import pytest
 import respx
 
-from app.worker.speechkit_client import RECOGNIZE_URL, Segment, SpeechKitError, transcribe
+from app.worker.speechkit_client import (
+    RECOGNIZE_URL,
+    Segment,
+    SpeechKitError,
+    model_for_mode,
+    poll_config_for_mode,
+    transcribe,
+)
 
 OPERATION_URL = "https://operation.api.cloud.yandex.net/operations/op-123"
+
+
+def test_model_for_mode_maps_fast_to_general():
+    assert model_for_mode("fast") == "general"
+
+
+def test_model_for_mode_maps_deferred_to_deferred_general():
+    assert model_for_mode("deferred") == "deferred-general"
+
+
+def test_poll_config_for_fast_mode_covers_about_30_minutes():
+    poll_interval_sec, max_polls = poll_config_for_mode("fast")
+
+    assert poll_interval_sec * max_polls >= 30 * 60
+    assert poll_interval_sec * max_polls < 60 * 60
+
+
+def test_poll_config_for_deferred_mode_covers_up_to_24_hours():
+    poll_interval_sec, max_polls = poll_config_for_mode("deferred")
+
+    assert poll_interval_sec * max_polls >= 24 * 60 * 60
+
+
+def test_poll_config_for_mode_rejects_unknown_mode():
+    with pytest.raises(ValueError):
+        poll_config_for_mode("turbo")
+
+
+def test_model_for_mode_rejects_unknown_mode():
+    with pytest.raises(ValueError):
+        model_for_mode("turbo")
+
+
+@respx.mock
+def test_transcribe_sends_model_matching_mode():
+    route = respx.post(RECOGNIZE_URL).mock(return_value=httpx.Response(200, json={"id": "op-123"}))
+    respx.get(OPERATION_URL).mock(return_value=httpx.Response(200, json={"done": True, "response": {"chunks": []}}))
+
+    transcribe(b"fake-audio-bytes", model="deferred-general", poll_interval_sec=0, max_polls=1)
+
+    sent_body = json.loads(route.calls[0].request.content)
+    assert sent_body["recognitionModel"]["model"] == "deferred-general"
 
 
 @respx.mock

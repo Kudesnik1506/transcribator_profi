@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
@@ -42,6 +43,7 @@ class CreateRecordingRequest(BaseModel):
     s3_key: str
     original_filename: str
     content_type: str = "application/octet-stream"
+    mode: Literal["fast", "deferred"] | None = None
 
 
 class RecordingResponse(BaseModel):
@@ -63,6 +65,7 @@ class SummaryResponse(BaseModel):
 class RecordingDetailResponse(BaseModel):
     id: str
     status: str
+    mode: str
     progress_percent: int
     original_filename: str
     content_type: str
@@ -76,6 +79,7 @@ class RecordingListItemResponse(BaseModel):
     id: str
     original_filename: str
     status: str
+    mode: str
     progress_percent: int
     created_at: datetime
 
@@ -115,6 +119,7 @@ def list_recordings(
             id=r.id,
             original_filename=r.original_filename,
             status=r.status,
+            mode=r.mode,
             progress_percent=r.progress_percent,
             created_at=r.created_at,
         )
@@ -134,6 +139,7 @@ async def create_recording(
         original_filename=payload.original_filename,
         s3_key_media=payload.s3_key,
         content_type=payload.content_type,
+        mode=payload.mode or settings.default_processing_mode,
         status="queued",
     )
     db.add(recording)
@@ -155,6 +161,7 @@ def get_recording(
     return RecordingDetailResponse(
         id=recording.id,
         status=recording.status,
+        mode=recording.mode,
         progress_percent=recording.progress_percent,
         original_filename=recording.original_filename,
         content_type=recording.content_type,

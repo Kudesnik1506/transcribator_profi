@@ -75,6 +75,64 @@ def test_create_recording_requires_auth(client):
     assert response.status_code == 401
 
 
+def test_create_recording_defaults_mode_from_settings(client, db_session, auth_headers, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "default_processing_mode", "fast")
+
+    response = client.post(
+        "/recordings", json={"s3_key": "k", "original_filename": "f.mp4"}, headers=auth_headers
+    )
+
+    saved = db_session.get(Recording, response.json()["id"])
+    assert saved.mode == "fast"
+
+
+def test_create_recording_accepts_explicit_mode(client, db_session, auth_headers):
+    response = client.post(
+        "/recordings",
+        json={"s3_key": "k", "original_filename": "f.mp4", "mode": "fast"},
+        headers=auth_headers,
+    )
+
+    saved = db_session.get(Recording, response.json()["id"])
+    assert saved.mode == "fast"
+
+
+def test_create_recording_rejects_invalid_mode(client, auth_headers):
+    response = client.post(
+        "/recordings",
+        json={"s3_key": "k", "original_filename": "f.mp4", "mode": "turbo"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+
+
+def test_get_recording_includes_mode(client, db_session, auth_headers, active_user):
+    recording = Recording(
+        user_id=active_user.id, original_filename="f.mp4", s3_key_media="k", status="done", mode="fast"
+    )
+    db_session.add(recording)
+    db_session.commit()
+
+    response = client.get(f"/recordings/{recording.id}", headers=auth_headers)
+
+    assert response.json()["mode"] == "fast"
+
+
+def test_list_recordings_includes_mode(client, db_session, auth_headers, active_user):
+    recording = Recording(
+        user_id=active_user.id, original_filename="f.mp4", s3_key_media="k", status="done", mode="fast"
+    )
+    db_session.add(recording)
+    db_session.commit()
+
+    response = client.get("/recordings", headers=auth_headers)
+
+    assert response.json()[0]["mode"] == "fast"
+
+
 def test_get_recording_returns_segments_and_summary(client, db_session, auth_headers, active_user):
     recording = Recording(user_id=active_user.id, original_filename="f.mp4", s3_key_media="k", status="done")
     db_session.add(recording)
