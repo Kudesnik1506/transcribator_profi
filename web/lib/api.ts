@@ -73,7 +73,8 @@ async function apiFetch<T>(path: string, label: string, init?: RequestInit): Pro
       const body = await response.json().catch(() => null);
       throw new Error(body?.detail ?? "превышен дневной лимит загрузок");
     }
-    throw new Error(`${label} failed: ${response.status}`);
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.detail ?? `${label} failed: ${response.status}`);
   }
   if (response.status === 204) {
     return undefined as T;
