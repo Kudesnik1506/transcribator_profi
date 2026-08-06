@@ -1,10 +1,5 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export type PresignResponse = {
-  upload_url: string;
-  s3_key: string;
-};
-
 export type RecordingSegment = {
   start_ms: number;
   end_ms: number;
@@ -33,39 +28,115 @@ export type RecordingListItem = {
   created_at: string;
 };
 
+export type CreateMultipartUploadResponse = {
+  upload_id: string;
+  s3_key: string;
+  part_size: number;
+  part_count: number;
+};
+
+export type UploadedPartInfo = {
+  part_number: number;
+  etag: string;
+  size: number;
+};
+
+export type PartUrlResponse = {
+  upload_url: string;
+};
+
 async function apiFetch<T>(path: string, label: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, init);
   if (!response.ok) {
+    if (response.status === 413) {
+      throw new Error("файл больше допустимого размера");
+    }
     throw new Error(`${label} failed: ${response.status}`);
+  }
+  if (response.status === 204) {
+    return undefined as T;
   }
   return response.json();
 }
 
-export function presignUpload(filename: string, contentType: string): Promise<PresignResponse> {
-  return apiFetch<PresignResponse>("/uploads/presign", "presign", {
+function postJson<T>(path: string, label: string, body: object): Promise<T> {
+  return apiFetch<T>(path, label, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ filename, content_type: contentType }),
+    body: JSON.stringify(body),
   });
 }
 
-export async function uploadToS3(uploadUrl: string, file: File): Promise<void> {
-  const response = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": file.type || "application/octet-stream" },
-    body: file,
+export function createMultipartUpload(
+  filename: string,
+  contentType: string,
+  sizeBytes: number
+): Promise<CreateMultipartUploadResponse> {
+  return postJson("/uploads/multipart", "create multipart upload", {
+    filename,
+    content_type: contentType,
+    size_bytes: sizeBytes,
   });
-  if (!response.ok) {
-    throw new Error(`upload to S3 failed: ${response.status}`);
-  }
+}
+
+export function getPartUploadUrl(uploadId: string, partNumber: number, s3Key: string): Promise<PartUrlResponse> {
+  return postJson(`/uploads/multipart/${uploadId}/parts/${partNumber}`, "get part upload url", {
+    s3_key: s3Key,
+  });
+}
+
+export function getUploadedParts(uploadId: string, s3Key: string): Promise<UploadedPartInfo[]> {
+  return apiFetch<UploadedPartInfo[]>(
+    `/uploads/multipart/${uploadId}/parts?s3_key=${encodeURIComponent(s3Key)}`,
+    "get uploaded parts"
+  );
+}
+
+export function completeMultipartUpload(
+  uploadId: string,
+  s3Key: string,
+  parts: { part_number: number; etag: string }[]
+): Promise<void> {
+  return postJson(`/uploads/multipart/${uploadId}/complete`, "complete multipart upload", {
+    s3_key: s3Key,
+    parts,
+  });
+}
+
+export function abortMultipartUpload(uploadId: string, s3Key: string): Promise<void> {
+  return postJson(`/uploads/multipart/${uploadId}/abort`, "abort multipart upload", { s3_key: s3Key });
+}
+
+// Timeweb S3 bucket CORS config must expose the ETag header
+// (Access-Control-Expose-Headers: ETag) or the browser can read the
+// upload succeeding but never see the ETag needed to complete the
+// multipart upload. Verify this once real S3 credentials are available.
+export function uploadPart(url: string, blob: Blob, onProgress: (loadedBytes: number) => void): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(event.loaded);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const etag = xhr.getResponseHeader("ETag");
+        if (!etag) {
+          reject(new Error("часть загружена, но сервер не вернул ETag"));
+          return;
+        }
+        resolve(etag);
+      } else {
+        reject(new Error(`ошибка загрузки части: ${xhr.status}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error("сеть оборвалась при загрузке части"));
+    xhr.send(blob);
+  });
 }
 
 export function createRecording(s3Key: string, originalFilename: string): Promise<{ id: string; status: string }> {
-  return apiFetch("/recordings", "create recording", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ s3_key: s3Key, original_filename: originalFilename }),
-  });
+  return postJson("/recordings", "create recording", { s3_key: s3Key, original_filename: originalFilename });
 }
 
 export function getRecording(id: string): Promise<RecordingDetail> {

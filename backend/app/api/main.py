@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from botocore.exceptions import ClientError
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 import app.models  # noqa: F401 - registers tables on Base.metadata
 from app.api.routes_recordings import router as recordings_router
@@ -18,3 +20,8 @@ app = FastAPI(title="Транскрибатор API", lifespan=lifespan)
 
 app.include_router(uploads_router)
 app.include_router(recordings_router)
+
+
+@app.exception_handler(ClientError)
+async def s3_client_error_handler(request: Request, exc: ClientError) -> JSONResponse:
+    return JSONResponse(status_code=502, content={"detail": "хранилище S3 недоступно, попробуйте позже"})
