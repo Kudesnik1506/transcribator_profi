@@ -79,3 +79,7 @@ def complete_multipart_upload(key: str, upload_id: str, parts: list[UploadedPart
 
 def abort_multipart_upload(key: str, upload_id: str) -> None:
     _client().abort_multipart_upload(Bucket=settings.s3_bucket, Key=key, UploadId=upload_id)
+
+
+def delete_media(key: str) -> None:
+    _client().delete_object(Bucket=settings.s3_bucket, Key=key)

@@ -322,3 +322,63 @@ export type TelegramLinkCode = {
 export function createTelegramLinkCode(): Promise<TelegramLinkCode> {
   return apiFetch<TelegramLinkCode>("/telegram/link-code", "create telegram link code", { method: "POST" });
 }
+
+export type AdminUser = {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  created_at: string;
+};
+
+export function adminListUsers(): Promise<AdminUser[]> {
+  return apiFetch<AdminUser[]>("/admin/users", "list users");
+}
+
+export function adminApproveUser(userId: string): Promise<AdminUser> {
+  return apiFetch<AdminUser>(`/admin/users/${userId}/approve`, "approve user", { method: "POST" });
+}
+
+export function adminBlockUser(userId: string): Promise<AdminUser> {
+  return apiFetch<AdminUser>(`/admin/users/${userId}/block`, "block user", { method: "POST" });
+}
+
+export type AdminRecording = {
+  id: string;
+  original_filename: string;
+  status: string;
+  mode: string;
+  progress_percent: number;
+  user_id: string | null;
+  user_email: string | null;
+  created_at: string;
+};
+
+export function adminListRecordings(filters: { userId?: string; status?: string }): Promise<AdminRecording[]> {
+  const params = new URLSearchParams();
+  if (filters.userId) params.set("user_id", filters.userId);
+  if (filters.status) params.set("status", filters.status);
+  const query = params.toString();
+  return apiFetch<AdminRecording[]>(`/admin/recordings${query ? `?${query}` : ""}`, "list all recordings");
+}
+
+export function adminDeleteRecording(recordingId: string): Promise<void> {
+  return apiFetch<void>(`/admin/recordings/${recordingId}`, "delete recording", { method: "DELETE" });
+}
+
+export type AdminErrorLog = {
+  id: string;
+  recording_id: string | null;
+  level: string;
+  message: string;
+  context: Record<string, unknown>;
+  created_at: string;
+};
+
+export function adminListErrorLogs(filters: { level?: string; recordingId?: string }): Promise<AdminErrorLog[]> {
+  const params = new URLSearchParams();
+  if (filters.level) params.set("level", filters.level);
+  if (filters.recordingId) params.set("recording_id", filters.recordingId);
+  const query = params.toString();
+  return apiFetch<AdminErrorLog[]>(`/admin/error-logs${query ? `?${query}` : ""}`, "list error logs");
+}

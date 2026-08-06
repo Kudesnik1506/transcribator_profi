@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 import app.models  # noqa: F401 - registers tables on Base.metadata
+from app.api.routes_admin import router as admin_router
 from app.api.routes_auth import router as auth_router
 from app.api.routes_config import router as config_router
 from app.api.routes_recordings import router as recordings_router
@@ -37,6 +38,7 @@ app.include_router(config_router)
 app.include_router(uploads_router)
 app.include_router(recordings_router)
 app.include_router(telegram_router)
+app.include_router(admin_router)
 
 
 @app.exception_handler(ClientError)

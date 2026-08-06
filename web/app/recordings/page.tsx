@@ -4,18 +4,9 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { listRecordings, type RecordingListItem } from "@/lib/api";
+import { formatDate } from "@/lib/date";
 import { TERMINAL_STATUSES, modeLabel, statusLabel } from "@/lib/recordingStatus";
 import { AuthGuard } from "@/components/AuthGuard";
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 export default function RecordingsListPage() {
   return (

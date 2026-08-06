@@ -28,3 +28,9 @@ def get_active_user(user: User = Depends(get_current_user)) -> User:
     if user.status == "pending":
         raise HTTPException(status_code=403, detail="аккаунт ожидает одобрения администратором")
     return user
+
+
+def get_admin_user(user: User = Depends(get_active_user)) -> User:
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="только для администраторов")
+    return user

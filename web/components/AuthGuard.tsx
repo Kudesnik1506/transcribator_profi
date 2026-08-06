@@ -6,7 +6,13 @@ import { useEffect, useState } from "react";
 import { getMe, type CurrentUser } from "@/lib/api";
 import { clearToken, loadToken } from "@/lib/auth";
 
-export function AuthGuard({ children }: { children: React.ReactNode }) {
+export function AuthGuard({
+  children,
+  requireAdmin = false,
+}: {
+  children: React.ReactNode;
+  requireAdmin?: boolean;
+}) {
   const router = useRouter();
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,6 +53,15 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       <main className="mx-auto flex max-w-md flex-col items-center gap-3 px-6 py-24 text-center">
         <h1 className="text-xl font-semibold text-black dark:text-zinc-50">Доступ заблокирован</h1>
         <p className="text-zinc-600 dark:text-zinc-400">Обратитесь к администратору.</p>
+      </main>
+    );
+  }
+
+  if (requireAdmin && user.role !== "admin") {
+    return (
+      <main className="mx-auto flex max-w-md flex-col items-center gap-3 px-6 py-24 text-center">
+        <h1 className="text-xl font-semibold text-black dark:text-zinc-50">Доступ только для администраторов</h1>
+        <p className="text-zinc-600 dark:text-zinc-400">У вас недостаточно прав для просмотра этой страницы.</p>
       </main>
     );
   }
