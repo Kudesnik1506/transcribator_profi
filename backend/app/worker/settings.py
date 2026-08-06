@@ -5,7 +5,7 @@ from arq.connections import RedisSettings
 
 from app.config import settings as app_settings
 from app.db import SessionLocal
-from app.worker.tasks import process_recording
+from app.worker.tasks import process_recording, retry_failed_chunks
 
 
 async def process_recording_job(ctx, recording_id: str) -> None:
@@ -17,6 +17,15 @@ async def process_recording_job(ctx, recording_id: str) -> None:
         db.close()
 
 
+async def retry_failed_chunks_job(ctx, recording_id: str) -> None:
+    db = SessionLocal()
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            retry_failed_chunks(db, recording_id, work_dir=Path(tmp))
+    finally:
+        db.close()
+
+
 class WorkerSettings:
-    functions = [process_recording_job]
+    functions = [process_recording_job, retry_failed_chunks_job]
     redis_settings = RedisSettings.from_dsn(app_settings.redis_url)

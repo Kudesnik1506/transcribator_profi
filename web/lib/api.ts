@@ -18,6 +18,7 @@ export type RecordingSummary = {
 export type RecordingDetail = {
   id: string;
   status: string;
+  progress_percent: number;
   original_filename: string;
   error_message: string | null;
   segments: RecordingSegment[];
@@ -61,4 +62,8 @@ export function createRecording(s3Key: string, originalFilename: string): Promis
 
 export function getRecording(id: string): Promise<RecordingDetail> {
   return apiFetch<RecordingDetail>(`/recordings/${id}`, "get recording");
+}
+
+export function retryRecording(id: string): Promise<{ id: string; status: string }> {
+  return apiFetch(`/recordings/${id}/retry`, "retry recording", { method: "POST" });
 }

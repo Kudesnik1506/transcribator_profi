@@ -7,7 +7,7 @@ from sqlalchemy.pool import StaticPool
 import app.models  # noqa: F401 - registers tables on Base.metadata
 from app.api.main import app
 from app.db import Base, get_db
-from app.models import Recording, Segment, Summary
+from app.models import Chunk, Recording, Segment, Summary
 from app.queue import get_queue
 
 
@@ -107,3 +107,32 @@ def test_get_recording_returns_error_message_when_failed(client, db_session):
     response = client.get(f"/recordings/{recording.id}")
 
     assert response.json()["error_message"] == "s3 is down"
+
+
+def test_get_recording_returns_progress_percent(client, db_session):
+    recording = Recording(original_filename="f.mp4", s3_key_media="k", status="transcribing", progress_percent=42)
+    db_session.add(recording)
+    db_session.commit()
+
+    response = client.get(f"/recordings/{recording.id}")
+
+    assert response.json()["progress_percent"] == 42
+
+
+def test_retry_recording_enqueues_retry_job(client, db_session, fake_queue):
+    recording = Recording(original_filename="f.mp4", s3_key_media="k", status="partial")
+    db_session.add(recording)
+    db_session.commit()
+    db_session.add(Chunk(recording_id=recording.id, idx=0, start_sec=0, end_sec=900, status="failed"))
+    db_session.commit()
+
+    response = client.post(f"/recordings/{recording.id}/retry")
+
+    assert response.status_code == 202
+    assert fake_queue.enqueued == [("retry_failed_chunks_job", (recording.id,))]
+
+
+def test_retry_recording_404_when_missing(client):
+    response = client.post("/recordings/does-not-exist/retry")
+
+    assert response.status_code == 404

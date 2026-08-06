@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 
-import { getRecording, type RecordingDetail } from "@/lib/api";
+import { getRecording, retryRecording, type RecordingDetail } from "@/lib/api";
 
 const STATUS_LABELS: Record<string, string> = {
   queued: "В очереди",
@@ -15,6 +15,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const TERMINAL_STATUSES = new Set(["done", "partial", "failed"]);
+const IN_PROGRESS_STATUSES = new Set(["extracting", "transcribing"]);
 
 function formatTimestamp(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -27,6 +28,7 @@ export default function RecordingPage({ params }: { params: Promise<{ id: string
   const { id } = use(params);
   const [recording, setRecording] = useState<RecordingDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,6 +54,19 @@ export default function RecordingPage({ params }: { params: Promise<{ id: string
     };
   }, [id]);
 
+  async function handleRetry() {
+    setRetrying(true);
+    try {
+      await retryRecording(id);
+      const data = await getRecording(id);
+      setRecording(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось запустить повтор");
+    } finally {
+      setRetrying(false);
+    }
+  }
+
   if (error) {
     return <main className="mx-auto max-w-3xl px-6 py-12 text-red-600">{error}</main>;
   }
@@ -65,8 +80,33 @@ export default function RecordingPage({ params }: { params: Promise<{ id: string
       <div>
         <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">{recording.original_filename}</h1>
         <p className="mt-1 text-zinc-500">{STATUS_LABELS[recording.status] ?? recording.status}</p>
+
+        {IN_PROGRESS_STATUSES.has(recording.status) && (
+          <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+            <div
+              className="h-full rounded-full bg-foreground transition-all"
+              style={{ width: `${recording.progress_percent}%` }}
+            />
+          </div>
+        )}
+
         {recording.status === "failed" && recording.error_message && (
           <p className="mt-2 text-sm text-red-600">{recording.error_message}</p>
+        )}
+
+        {recording.status === "partial" && (
+          <div className="mt-3 flex items-center gap-3">
+            <p className="text-sm text-amber-600">
+              Часть записи не удалось распознать — ниже показано то, что получилось.
+            </p>
+            <button
+              onClick={handleRetry}
+              disabled={retrying}
+              className="shrink-0 rounded-full border border-solid border-black/[.08] px-4 py-1.5 text-sm transition-colors hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:hover:bg-[#1a1a1a]"
+            >
+              {retrying ? "Запускаем…" : "Допровести"}
+            </button>
+          </div>
         )}
       </div>
 
