@@ -154,6 +154,12 @@ export function getRecording(id: string): Promise<RecordingDetail> {
   return apiFetch<RecordingDetail>(`/recordings/${id}`, "get recording");
 }
 
+export type ExportFormat = "txt" | "srt" | "docx";
+
+export function exportUrl(id: string, format: ExportFormat): string {
+  return `${API_URL}/recordings/${id}/export/${format}`;
+}
+
 export type SearchMatch = {
   segment_id: string;
   start_ms: number;

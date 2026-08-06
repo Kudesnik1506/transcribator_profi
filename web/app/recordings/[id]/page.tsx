@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 
-import { getRecording, retryRecording, type RecordingDetail } from "@/lib/api";
+import { exportUrl, getRecording, retryRecording, type RecordingDetail } from "@/lib/api";
 import { IN_PROGRESS_STATUSES, TERMINAL_STATUSES, statusLabel } from "@/lib/recordingStatus";
 
 import { Dialog } from "./Dialog";
@@ -107,7 +107,20 @@ export default function RecordingPage({ params }: { params: Promise<{ id: string
 
       {recording.segments.length > 0 && (
         <section>
-          <h2 className="mb-3 text-lg font-medium text-black dark:text-zinc-50">Транскрипт</h2>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-medium text-black dark:text-zinc-50">Транскрипт</h2>
+            <div className="flex gap-2">
+              {(["txt", "srt", "docx"] as const).map((format) => (
+                <a
+                  key={format}
+                  href={exportUrl(recording.id, format)}
+                  className="rounded-full border border-solid border-black/[.08] px-3 py-1 text-xs transition-colors hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a]"
+                >
+                  .{format}
+                </a>
+              ))}
+            </div>
+          </div>
           <PlayerTranscript
             recordingId={recording.id}
             mediaUrl={recording.media_url}

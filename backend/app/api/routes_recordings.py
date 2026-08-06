@@ -1,12 +1,13 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import SessionLocal, get_db
+from app.export import build_docx, build_srt, build_txt, content_disposition, export_filename
 from app.models import Message, Recording, Segment
 from app.queue import get_queue
 from app.s3 import presign_get_url
@@ -15,6 +16,18 @@ from app.worker.ai_gateway_client import stream_answer
 from app.worker.dialog import TranscriptTooLongError, build_dialog_messages
 
 router = APIRouter()
+
+EXPORT_CONTENT_TYPES = {
+    "txt": "text/plain; charset=utf-8",
+    "srt": "application/x-subrip",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+EXPORT_BUILDERS = {
+    "txt": lambda recording, segments: build_txt(segments).encode("utf-8"),
+    "srt": lambda recording, segments: build_srt(segments).encode("utf-8"),
+    "docx": lambda recording, segments: build_docx(recording.original_filename, segments),
+}
 
 
 class CreateRecordingRequest(BaseModel):
@@ -155,6 +168,29 @@ def search_recording(recording_id: str, q: str, db: Session = Depends(get_db)) -
             SearchMatchResponse(segment_id=m.segment_id, start_ms=m.start_ms, end_ms=m.end_ms, text=m.text)
             for m in matches
         ],
+    )
+
+
+@router.get("/recordings/{recording_id}/export/{fmt}")
+def export_recording(recording_id: str, fmt: str, db: Session = Depends(get_db)) -> Response:
+    if fmt not in EXPORT_CONTENT_TYPES:
+        raise HTTPException(status_code=404, detail="unknown export format")
+
+    recording = db.get(Recording, recording_id)
+    if recording is None:
+        raise HTTPException(status_code=404, detail="recording not found")
+
+    segments = sorted(recording.segments, key=lambda s: s.start_ms)
+    if not segments:
+        raise HTTPException(status_code=409, detail="транскрипт ещё не готов")
+
+    filename = export_filename(recording.original_filename, fmt)
+    content = EXPORT_BUILDERS[fmt](recording, segments)
+
+    return Response(
+        content=content,
+        media_type=EXPORT_CONTENT_TYPES[fmt],
+        headers={"Content-Disposition": content_disposition(filename)},
     )
 
 

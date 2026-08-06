@@ -8,3 +8,4 @@ boto3==1.35.90
 pydantic==2.10.4
 pydantic-settings==2.7.1
 python-multipart==0.0.20
+python-docx==1.1.2
