@@ -3,19 +3,7 @@
 import { use, useEffect, useState } from "react";
 
 import { getRecording, retryRecording, type RecordingDetail } from "@/lib/api";
-
-const STATUS_LABELS: Record<string, string> = {
-  queued: "В очереди",
-  extracting: "Извлекаем аудио",
-  transcribing: "Распознаём речь",
-  summarizing: "Готовим сводку",
-  done: "Готово",
-  partial: "Частично обработана",
-  failed: "Ошибка обработки",
-};
-
-const TERMINAL_STATUSES = new Set(["done", "partial", "failed"]);
-const IN_PROGRESS_STATUSES = new Set(["extracting", "transcribing"]);
+import { IN_PROGRESS_STATUSES, TERMINAL_STATUSES, statusLabel } from "@/lib/recordingStatus";
 
 function formatTimestamp(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -79,7 +67,7 @@ export default function RecordingPage({ params }: { params: Promise<{ id: string
     <main className="mx-auto flex max-w-3xl flex-col gap-8 px-6 py-12">
       <div>
         <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">{recording.original_filename}</h1>
-        <p className="mt-1 text-zinc-500">{STATUS_LABELS[recording.status] ?? recording.status}</p>
+        <p className="mt-1 text-zinc-500">{statusLabel(recording.status)}</p>
 
         {IN_PROGRESS_STATUSES.has(recording.status) && (
           <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">

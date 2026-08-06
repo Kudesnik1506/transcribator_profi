@@ -136,3 +136,29 @@ def test_retry_recording_404_when_missing(client):
     response = client.post("/recordings/does-not-exist/retry")
 
     assert response.status_code == 404
+
+
+def test_list_recordings_returns_newest_first(client, db_session):
+    older = Recording(original_filename="a.mp4", s3_key_media="k1", status="done", progress_percent=100)
+    db_session.add(older)
+    db_session.commit()
+    newer = Recording(original_filename="b.mp4", s3_key_media="k2", status="transcribing", progress_percent=40)
+    db_session.add(newer)
+    db_session.commit()
+
+    response = client.get("/recordings")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [r["id"] for r in body] == [newer.id, older.id]
+    assert body[0]["original_filename"] == "b.mp4"
+    assert body[0]["status"] == "transcribing"
+    assert body[0]["progress_percent"] == 40
+    assert "created_at" in body[0]
+
+
+def test_list_recordings_empty(client):
+    response = client.get("/recordings")
+
+    assert response.status_code == 200
+    assert response.json() == []

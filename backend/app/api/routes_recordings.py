@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -37,6 +39,29 @@ class RecordingDetailResponse(BaseModel):
     error_message: str | None
     segments: list[SegmentResponse]
     summary: SummaryResponse | None
+
+
+class RecordingListItemResponse(BaseModel):
+    id: str
+    original_filename: str
+    status: str
+    progress_percent: int
+    created_at: datetime
+
+
+@router.get("/recordings", response_model=list[RecordingListItemResponse])
+def list_recordings(db: Session = Depends(get_db)) -> list[RecordingListItemResponse]:
+    recordings = db.query(Recording).order_by(Recording.created_at.desc()).all()
+    return [
+        RecordingListItemResponse(
+            id=r.id,
+            original_filename=r.original_filename,
+            status=r.status,
+            progress_percent=r.progress_percent,
+            created_at=r.created_at,
+        )
+        for r in recordings
+    ]
 
 
 @router.post("/recordings", response_model=RecordingResponse, status_code=201)

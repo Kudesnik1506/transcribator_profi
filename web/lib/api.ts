@@ -25,6 +25,14 @@ export type RecordingDetail = {
   summary: RecordingSummary | null;
 };
 
+export type RecordingListItem = {
+  id: string;
+  original_filename: string;
+  status: string;
+  progress_percent: number;
+  created_at: string;
+};
+
 async function apiFetch<T>(path: string, label: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, init);
   if (!response.ok) {
@@ -62,6 +70,10 @@ export function createRecording(s3Key: string, originalFilename: string): Promis
 
 export function getRecording(id: string): Promise<RecordingDetail> {
   return apiFetch<RecordingDetail>(`/recordings/${id}`, "get recording");
+}
+
+export function listRecordings(): Promise<RecordingListItem[]> {
+  return apiFetch<RecordingListItem[]>("/recordings", "list recordings");
 }
 
 export function retryRecording(id: string): Promise<{ id: string; status: string }> {

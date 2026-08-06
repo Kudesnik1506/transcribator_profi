@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -47,6 +48,9 @@ export default function UploadPage() {
           {status === "uploading" ? "Загрузка…" : "Загрузить"}
         </button>
         {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
+        <Link href="/recordings" className="text-sm text-zinc-500 underline">
+          Мои Записи
+        </Link>
       </main>
     </div>
   );
