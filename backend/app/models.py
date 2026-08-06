@@ -45,6 +45,7 @@ class Recording(Base):
     # re-entrant _finalize call) without blocking a genuinely new outcome —
     # a retry can move partial -> done, and that deserves its own email.
     notified_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    media_deleted_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     chunks: Mapped[list["Chunk"]] = relationship(back_populates="recording", cascade="all, delete-orphan")
     segments: Mapped[list["Segment"]] = relationship(back_populates="recording", cascade="all, delete-orphan")

@@ -66,5 +66,10 @@ class Settings(BaseSettings):
     # Empty means "not configured", so the check is skipped (dev/no bot yet).
     telegram_webhook_secret: str = ""
 
+    # Two different clocks (D6): media is the expensive part (terabytes at
+    # scale), text artifacts (Транскрипт/Сводка/Диалог) cost pennies to keep.
+    media_retention_days: int = 30
+    data_retention_days: int = 180
+
 
 settings = Settings()

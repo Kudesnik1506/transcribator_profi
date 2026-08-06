@@ -20,7 +20,8 @@ export type RecordingDetail = {
   progress_percent: number;
   original_filename: string;
   content_type: string;
-  media_url: string;
+  media_url: string | null;
+  media_deleted_at: string | null;
   error_message: string | null;
   segments: RecordingSegment[];
   summary: RecordingSummary | null;

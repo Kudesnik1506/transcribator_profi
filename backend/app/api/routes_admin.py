@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_admin_user
 from app.db import get_db
-from app.models import ErrorLog, Message, Recording, User
-from app.s3 import delete_media
+from app.models import ErrorLog, Recording, User
+from app.recording_deletion import purge_recording
 
 router = APIRouter(prefix="/admin", dependencies=[Depends(get_admin_user)])
 
@@ -104,12 +104,7 @@ def delete_recording(recording_id: str, db: Session = Depends(get_db)) -> None:
     if recording is None:
         raise HTTPException(status_code=404, detail="запись не найдена")
 
-    delete_media(recording.s3_key_media)
-
-    db.query(Message).filter_by(recording_id=recording.id).delete()
-    db.query(ErrorLog).filter_by(recording_id=recording.id).delete()
-    db.delete(recording)
-    db.commit()
+    purge_recording(db, recording)
 
 
 class AdminErrorLogResponse(BaseModel):

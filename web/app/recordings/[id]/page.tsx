@@ -142,6 +142,7 @@ function RecordingPageContent({ params }: { params: Promise<{ id: string }> }) {
           <PlayerTranscript
             recordingId={recording.id}
             mediaUrl={recording.media_url}
+            mediaDeletedAt={recording.media_deleted_at}
             contentType={recording.content_type}
             segments={recording.segments}
           />

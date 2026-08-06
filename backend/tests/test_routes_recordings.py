@@ -168,6 +168,27 @@ def test_get_recording_returns_media_url_and_content_type(client, db_session, au
     assert body["content_type"] == "video/mp4"
     assert body["media_url"].startswith("http")
     assert "f.mp4" in body["media_url"]
+    assert body["media_deleted_at"] is None
+
+
+def test_get_recording_hides_media_url_when_media_deleted(client, db_session, auth_headers, active_user):
+    from datetime import datetime, timezone
+
+    recording = Recording(
+        user_id=active_user.id,
+        original_filename="f.mp4",
+        s3_key_media="media/f.mp4",
+        status="done",
+        media_deleted_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    db_session.add(recording)
+    db_session.commit()
+
+    response = client.get(f"/recordings/{recording.id}", headers=auth_headers)
+
+    body = response.json()
+    assert body["media_url"] is None
+    assert body["media_deleted_at"] is not None
 
 
 def test_create_recording_persists_content_type(client, db_session, auth_headers):

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { searchRecording } from "@/lib/api";
+import { formatDate } from "@/lib/date";
 import { findActiveSegmentIndex } from "@/lib/player";
 
 type Segment = {
@@ -22,11 +23,13 @@ function formatTimestamp(ms: number): string {
 export function PlayerTranscript({
   recordingId,
   mediaUrl,
+  mediaDeletedAt,
   contentType,
   segments,
 }: {
   recordingId: string;
-  mediaUrl: string;
+  mediaUrl: string | null;
+  mediaDeletedAt: string | null;
   contentType: string;
   segments: Segment[];
 }) {
@@ -34,6 +37,7 @@ export function PlayerTranscript({
   const paragraphRefs = useRef<(HTMLParagraphElement | null)[]>([]);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [mediaUnavailable, setMediaUnavailable] = useState(false);
+  const unavailable = mediaUnavailable || mediaUrl === null;
 
   const [query, setQuery] = useState("");
   const [matchedIds, setMatchedIds] = useState<Set<string>>(new Set());
@@ -109,9 +113,11 @@ export function PlayerTranscript({
 
   return (
     <div className="flex flex-col gap-4">
-      {mediaUnavailable ? (
+      {unavailable ? (
         <p className="rounded-lg bg-zinc-100 px-4 py-3 text-sm text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-          Исходный файл удалён — медиа хранится 30 дней после загрузки. Текст ниже остаётся доступен.
+          {mediaDeletedAt
+            ? `Исходный файл удалён ${formatDate(mediaDeletedAt)} по истечении срока хранения. Текст ниже остаётся доступен.`
+            : "Исходный файл удалён — медиа хранится ограниченное время после загрузки. Текст ниже остаётся доступен."}
         </p>
       ) : isVideo ? (
         <video

@@ -128,10 +128,10 @@ def test_list_all_recordings_filters_by_status(client, db_session, admin_auth_he
 
 
 def test_delete_recording_removes_media_from_s3(client, db_session, admin_auth_headers, active_user, monkeypatch):
-    import app.api.routes_admin as routes_admin
+    import app.recording_deletion as recording_deletion
 
     deleted_keys = []
-    monkeypatch.setattr(routes_admin, "delete_media", lambda key: deleted_keys.append(key))
+    monkeypatch.setattr(recording_deletion, "delete_media", lambda key: deleted_keys.append(key))
 
     recording = Recording(user_id=active_user.id, original_filename="a.mp4", s3_key_media="media/a.mp4")
     db_session.add(recording)
@@ -145,9 +145,9 @@ def test_delete_recording_removes_media_from_s3(client, db_session, admin_auth_h
 
 
 def test_delete_recording_removes_related_rows(client, db_session, admin_auth_headers, active_user, monkeypatch):
-    import app.api.routes_admin as routes_admin
+    import app.recording_deletion as recording_deletion
 
-    monkeypatch.setattr(routes_admin, "delete_media", lambda key: None)
+    monkeypatch.setattr(recording_deletion, "delete_media", lambda key: None)
 
     recording = Recording(user_id=active_user.id, original_filename="a.mp4", s3_key_media="media/a.mp4")
     db_session.add(recording)

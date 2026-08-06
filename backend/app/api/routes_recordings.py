@@ -70,7 +70,8 @@ class RecordingDetailResponse(BaseModel):
     progress_percent: int
     original_filename: str
     content_type: str
-    media_url: str
+    media_url: str | None
+    media_deleted_at: datetime | None
     error_message: str | None
     segments: list[SegmentResponse]
     summary: SummaryResponse | None
@@ -174,7 +175,8 @@ def get_recording(
         progress_percent=recording.progress_percent,
         original_filename=recording.original_filename,
         content_type=recording.content_type,
-        media_url=presign_get_url(recording.s3_key_media),
+        media_url=presign_get_url(recording.s3_key_media) if recording.media_deleted_at is None else None,
+        media_deleted_at=recording.media_deleted_at,
         error_message=recording.error_message,
         segments=[SegmentResponse(id=s.id, start_ms=s.start_ms, end_ms=s.end_ms, text=s.text) for s in segments],
         summary=SummaryResponse(items=recording.summary.items) if recording.summary else None,
