@@ -234,6 +234,8 @@ async def retry_recording(
     user: User = Depends(get_active_user),
 ) -> RecordingResponse:
     recording = _get_owned_recording(db, recording_id, user)
+    if recording.status != "partial":
+        raise HTTPException(status_code=409, detail="повтор доступен только для частично обработанной записи")
 
     await queue.enqueue_job("retry_failed_chunks_job", recording.id)
 

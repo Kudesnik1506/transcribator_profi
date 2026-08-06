@@ -281,6 +281,17 @@ def test_retry_recording_404_when_missing(client, auth_headers):
     assert response.status_code == 404
 
 
+def test_retry_recording_rejects_when_not_partial(client, db_session, fake_queue, auth_headers, active_user):
+    recording = Recording(user_id=active_user.id, original_filename="f.mp4", s3_key_media="k", status="done")
+    db_session.add(recording)
+    db_session.commit()
+
+    response = client.post(f"/recordings/{recording.id}/retry", headers=auth_headers)
+
+    assert response.status_code == 409
+    assert fake_queue.enqueued == []
+
+
 def test_list_recordings_returns_newest_first(client, db_session, auth_headers, active_user):
     older = Recording(
         user_id=active_user.id, original_filename="a.mp4", s3_key_media="k1", status="done", progress_percent=100
