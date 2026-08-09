@@ -134,11 +134,24 @@ export function abortMultipartUpload(uploadId: string, s3Key: string): Promise<v
   return postJson(`/uploads/multipart/${uploadId}/abort`, "abort multipart upload", { s3_key: s3Key });
 }
 
+const MAX_PART_UPLOAD_ATTEMPTS = 3;
+const PART_UPLOAD_RETRY_DELAY_MS = 2000;
+
+class NetworkUploadError extends Error {
+  constructor() {
+    super("сеть оборвалась при загрузке части");
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // Timeweb S3 bucket CORS config must expose the ETag header
 // (Access-Control-Expose-Headers: ETag) or the browser can read the
 // upload succeeding but never see the ETag needed to complete the
 // multipart upload. Verify this once real S3 credentials are available.
-export function uploadPart(url: string, blob: Blob, onProgress: (loadedBytes: number) => void): Promise<string> {
+function uploadPartOnce(url: string, blob: Blob, onProgress: (loadedBytes: number) => void): Promise<string> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", url);
@@ -157,9 +170,26 @@ export function uploadPart(url: string, blob: Blob, onProgress: (loadedBytes: nu
         reject(new Error(`ошибка загрузки части: ${xhr.status}`));
       }
     };
-    xhr.onerror = () => reject(new Error("сеть оборвалась при загрузке части"));
+    xhr.onerror = () => reject(new NetworkUploadError());
     xhr.send(blob);
   });
+}
+
+// A dropped connection mid-part shouldn't force the user to manually hit
+// "Продолжить загрузку" — retry transient network failures a few times
+// before giving up. HTTP-status errors (expired presigned URL, etc.) go
+// straight through: retrying the same URL wouldn't fix those.
+export async function uploadPart(url: string, blob: Blob, onProgress: (loadedBytes: number) => void): Promise<string> {
+  for (let attempt = 1; attempt <= MAX_PART_UPLOAD_ATTEMPTS; attempt++) {
+    try {
+      return await uploadPartOnce(url, blob, onProgress);
+    } catch (error) {
+      if (!(error instanceof NetworkUploadError) || attempt === MAX_PART_UPLOAD_ATTEMPTS) throw error;
+      onProgress(0);
+      await sleep(PART_UPLOAD_RETRY_DELAY_MS);
+    }
+  }
+  throw new NetworkUploadError();
 }
 
 export type ProcessingMode = "fast" | "deferred";
