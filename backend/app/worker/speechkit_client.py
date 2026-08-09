@@ -1,13 +1,22 @@
 """Yandex SpeechKit v3 async recognition client.
 
-Contract assumed here (recognizeFileAsync, base64 content, Operation polling
-via operation.api.cloud.yandex.net) is our best reading of the v3 REST API —
-the live docs are behind a CAPTCHA we could not clear during implementation.
-Must be verified against a real YANDEX_API_KEY before this goes to production
-(tracked as open question #2 in docs/spec.md).
+Verified against a real YANDEX_API_KEY / YANDEX_FOLDER_ID (2026-08-09, live
+prod credentials) — the recognizeFileAsync + operation-polling submission
+flow was correct, but the result-fetching contract was not: the finished
+Operation carries no "response" field at all. Results must be pulled
+separately from `getRecognition`, which streams newline-delimited JSON
+events (not a single JSON object). Each recognized utterance shows up as a
+"final" event, optionally followed by a "finalRefinement" event carrying a
+punctuated/capitalized "normalizedText" for the same `final_index` — when
+present, that's what we want. Word timings arrive as `startTimeMs`/
+`endTimeMs`, already in milliseconds (not the `"0.5s"`-style duration
+strings this module originally assumed). See
+yandex/cloud/ai/stt/v3/stt.proto (yandex-cloud/cloudapi) for the full
+StreamingResponse schema.
 """
 
 import base64
+import json
 import time
 from dataclasses import dataclass
 
@@ -16,6 +25,7 @@ import httpx
 from app.config import settings
 
 RECOGNIZE_URL = "https://stt.api.cloud.yandex.net/stt/v3/recognizeFileAsync"
+GET_RECOGNITION_URL = "https://stt.api.cloud.yandex.net/stt/v3/getRecognition"
 OPERATION_URL_TEMPLATE = "https://operation.api.cloud.yandex.net/operations/{operation_id}"
 
 
@@ -85,7 +95,7 @@ def _submit(audio_bytes: bytes, model: str, client: httpx.Client) -> str:
     return operation_id
 
 
-def _poll(operation_id: str, client: httpx.Client, poll_interval_sec: float, max_polls: int) -> dict:
+def _poll(operation_id: str, client: httpx.Client, poll_interval_sec: float, max_polls: int) -> None:
     url = OPERATION_URL_TEMPLATE.format(operation_id=operation_id)
     for attempt in range(max_polls):
         response = client.get(url, headers=_auth_headers())
@@ -94,30 +104,61 @@ def _poll(operation_id: str, client: httpx.Client, poll_interval_sec: float, max
         if data.get("done"):
             if "error" in data:
                 raise SpeechKitError(f"recognition failed: {data['error']}")
-            return data.get("response", {})
+            return
         if attempt < max_polls - 1:
             time.sleep(poll_interval_sec)
     raise SpeechKitError(f"operation {operation_id} did not complete within {max_polls} polls")
 
 
-def _time_to_ms(value: str) -> int:
-    return round(float(value.rstrip("s")) * 1000)
+def _ms(value: str) -> int:
+    return round(float(value))
 
 
-def _parse_segments(result: dict) -> list[Segment]:
+def _segment_from_alternative_update(alternative_update: dict) -> Segment | None:
+    alternatives = alternative_update.get("alternatives", [])
+    if not alternatives:
+        return None
+    best = alternatives[0]
+    words = best.get("words", [])
+    if not words:
+        return None
+    start_ms = _ms(words[0]["startTimeMs"])
+    end_ms = _ms(words[-1]["endTimeMs"])
+    text = best.get("text") or " ".join(w["text"] for w in words)
+    return Segment(start_ms=start_ms, end_ms=end_ms, text=text)
+
+
+def _fetch_segments(operation_id: str, client: httpx.Client) -> list[Segment]:
+    # Only "final" and "finalRefinement" events carry a usable transcript;
+    # "partial"/"eouUpdate"/"statusCode" etc. are interim/marker events we
+    # skip. A "finalRefinement" is preferred over the raw "final" for the
+    # same final_index — it has punctuation/capitalization applied.
+    raw_by_index: dict[str, dict] = {}
+    refined_by_index: dict[str, dict] = {}
+
+    with client.stream(
+        "GET", GET_RECOGNITION_URL, params={"operation_id": operation_id}, headers=_auth_headers()
+    ) as response:
+        response.raise_for_status()
+        for line in response.iter_lines():
+            line = line.strip()
+            if not line:
+                continue
+            result = json.loads(line).get("result", {})
+            index = result.get("audioCursors", {}).get("finalIndex")
+            if index is None:
+                continue
+            if "final" in result:
+                raw_by_index[index] = result["final"]
+            elif "finalRefinement" in result:
+                refined_by_index[index] = result["finalRefinement"]["normalizedText"]
+
     segments: list[Segment] = []
-    for asr_result_chunk in result.get("chunks", []):
-        alternatives = asr_result_chunk.get("alternatives", [])
-        if not alternatives:
-            continue
-        best = alternatives[0]
-        words = best.get("words", [])
-        if not words:
-            continue
-        start_ms = _time_to_ms(words[0]["startTime"])
-        end_ms = _time_to_ms(words[-1]["endTime"])
-        text = best.get("text") or " ".join(w["word"] for w in words)
-        segments.append(Segment(start_ms=start_ms, end_ms=end_ms, text=text))
+    for index in sorted(raw_by_index.keys() | refined_by_index.keys(), key=int):
+        alternative_update = refined_by_index.get(index) or raw_by_index[index]
+        segment = _segment_from_alternative_update(alternative_update)
+        if segment is not None:
+            segments.append(segment)
     return segments
 
 
@@ -126,5 +167,5 @@ def transcribe(
 ) -> list[Segment]:
     with httpx.Client(timeout=60.0) as client:
         operation_id = _submit(audio_bytes, model, client)
-        result = _poll(operation_id, client, poll_interval_sec, max_polls)
-    return _parse_segments(result)
+        _poll(operation_id, client, poll_interval_sec, max_polls)
+        return _fetch_segments(operation_id, client)
