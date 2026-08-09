@@ -475,3 +475,131 @@ export function adminListActivityLogs(filters: { userId?: string; action?: strin
   const query = params.toString();
   return apiFetch<AdminActivityLog[]>(`/admin/activity${query ? `?${query}` : ""}`, "list activity logs");
 }
+
+// --- Тикеты поддержки ---
+
+export type TicketEvent = {
+  id: string;
+  status: string;
+  message: string;
+  author: "user" | "agent";
+  created_at: string;
+};
+
+export type TicketHypothesis = {
+  id: string;
+  text: string;
+  verdict: "pending" | "rejected" | "confirmed";
+  evidence: string | null;
+  created_at: string;
+};
+
+export type TicketListItem = {
+  id: string;
+  number: number;
+  description: string;
+  status: string;
+  created_at: string;
+};
+
+export type TicketDetail = {
+  id: string;
+  number: number;
+  description: string;
+  page_url: string | null;
+  screenshot_url: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  events: TicketEvent[];
+  hypotheses: TicketHypothesis[];
+};
+
+export type ScreenshotUrlResponse = {
+  upload_url: string;
+  s3_key: string;
+};
+
+export function createTicketScreenshotUrl(
+  filename: string,
+  contentType: string,
+  sizeBytes: number
+): Promise<ScreenshotUrlResponse> {
+  return postJson("/tickets/screenshot-url", "get screenshot upload url", {
+    filename,
+    content_type: contentType,
+    size_bytes: sizeBytes,
+  });
+}
+
+// Screenshots are a single PUT (no multipart, no retry loop) — plain fetch
+// is enough for a file this small.
+export async function uploadScreenshot(url: string, blob: Blob, contentType: string): Promise<void> {
+  const response = await fetch(url, { method: "PUT", headers: { "Content-Type": contentType }, body: blob });
+  if (!response.ok) {
+    throw new Error(`не удалось загрузить скриншот: ${response.status}`);
+  }
+}
+
+export function createTicket(
+  description: string,
+  pageUrl?: string,
+  screenshotS3Key?: string
+): Promise<TicketDetail> {
+  return postJson("/tickets", "create ticket", {
+    description,
+    page_url: pageUrl,
+    screenshot_s3_key: screenshotS3Key,
+  });
+}
+
+export function listMyTickets(): Promise<TicketListItem[]> {
+  return apiFetch<TicketListItem[]>("/tickets", "list tickets");
+}
+
+export function getTicket(id: string): Promise<TicketDetail> {
+  return apiFetch<TicketDetail>(`/tickets/${id}`, "get ticket");
+}
+
+export type AdminTicketListItem = TicketListItem & { user_email: string };
+
+export type AdminActivitySnapshot = {
+  action: string;
+  context: Record<string, unknown>;
+  created_at: string;
+};
+
+export type AdminTicketDetail = TicketDetail & {
+  user_email: string;
+  recent_activity: AdminActivitySnapshot[];
+};
+
+export function adminListTickets(status?: string): Promise<AdminTicketListItem[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return apiFetch<AdminTicketListItem[]>(`/admin/tickets${query}`, "list tickets");
+}
+
+export function adminGetTicket(id: string): Promise<AdminTicketDetail> {
+  return apiFetch<AdminTicketDetail>(`/admin/tickets/${id}`, "get ticket");
+}
+
+export function adminCreateHypothesis(ticketId: string, text: string): Promise<AdminTicketDetail> {
+  return postJson(`/admin/tickets/${ticketId}/hypotheses`, "create hypothesis", { text });
+}
+
+export function adminUpdateHypothesis(
+  ticketId: string,
+  hypothesisId: string,
+  verdict: "rejected" | "confirmed",
+  evidence: string
+): Promise<AdminTicketDetail> {
+  return apiFetch<AdminTicketDetail>(`/admin/tickets/${ticketId}/hypotheses/${hypothesisId}`, "update hypothesis", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ verdict, evidence }),
+  });
+}
+
+export function adminCreateTicketEvent(ticketId: string, status: string, message: string): Promise<AdminTicketDetail> {
+  return postJson(`/admin/tickets/${ticketId}/events`, "update ticket status", { status, message });
+}

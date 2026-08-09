@@ -30,6 +30,17 @@ def presign_get_url(key: str, expires_in: int = 3600) -> str:
     )
 
 
+def presign_put_url(key: str, content_type: str, expires_in: int = 3600) -> str:
+    # Single-shot upload for small files (ticket screenshots) — multipart
+    # is overkill for anything under a few MB and would trip the daily
+    # recording upload quota, which has nothing to do with bug reports.
+    return _client().generate_presigned_url(
+        "put_object",
+        Params={"Bucket": settings.s3_bucket, "Key": key, "ContentType": content_type},
+        ExpiresIn=expires_in,
+    )
+
+
 @dataclass
 class UploadedPart:
     part_number: int

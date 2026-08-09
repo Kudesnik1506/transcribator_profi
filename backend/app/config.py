@@ -15,6 +15,8 @@ class Settings(BaseSettings):
 
     max_upload_size_bytes: int = 2 * 1024**3
     multipart_part_size_bytes: int = 16 * 1024**2
+    # Ticket screenshots — single-shot presigned PUT, not multipart.
+    max_screenshot_size_bytes: int = 10 * 1024**2
 
     yandex_api_key: str = ""
     yandex_folder_id: str = ""
@@ -65,6 +67,11 @@ class Settings(BaseSettings):
     # guesses a live link code could steal it by hitting our webhook first.
     # Empty means "not configured", so the check is skipped (dev/no bot yet).
     telegram_webhook_secret: str = ""
+    # Chat ID that gets pinged when a user files a new support ticket.
+    # Independent of a user's own telegram_chat_id — that column was for
+    # per-user recording notifications, which the profile page no longer
+    # exposes; this is a fixed operator channel, set once in .env.
+    admin_telegram_chat_id: str = ""
 
     # Two different clocks (D6): media is the expensive part (terabytes at
     # scale), text artifacts (Транскрипт/Сводка/Диалог) cost pennies to keep.

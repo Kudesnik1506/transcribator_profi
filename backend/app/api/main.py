@@ -11,6 +11,7 @@ from app.api.routes_auth import router as auth_router
 from app.api.routes_config import router as config_router
 from app.api.routes_recordings import router as recordings_router
 from app.api.routes_telegram import router as telegram_router
+from app.api.routes_tickets import router as tickets_router
 from app.api.routes_uploads import router as uploads_router
 from app.auth import bootstrap_admin_user
 from app.config import settings
@@ -49,6 +50,7 @@ app.include_router(config_router)
 app.include_router(uploads_router)
 app.include_router(recordings_router)
 app.include_router(telegram_router)
+app.include_router(tickets_router)
 app.include_router(admin_router)
 
 

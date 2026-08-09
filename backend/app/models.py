@@ -134,6 +134,53 @@ class ActivityLog(Base):
     created_at: Mapped[datetime] = mapped_column(default=_now)
 
 
+class Ticket(Base):
+    __tablename__ = "tickets"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    number: Mapped[int] = mapped_column(unique=True, index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    description: Mapped[str] = mapped_column(Text)
+    page_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    screenshot_s3_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="new")
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+    updated_at: Mapped[datetime] = mapped_column(default=_now)
+
+    events: Mapped[list["TicketEvent"]] = relationship(
+        back_populates="ticket", cascade="all, delete-orphan", order_by="TicketEvent.created_at"
+    )
+    hypotheses: Mapped[list["TicketHypothesis"]] = relationship(
+        back_populates="ticket", cascade="all, delete-orphan", order_by="TicketHypothesis.created_at"
+    )
+
+
+class TicketEvent(Base):
+    __tablename__ = "ticket_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    ticket_id: Mapped[str] = mapped_column(ForeignKey("tickets.id"))
+    status: Mapped[str] = mapped_column(String)
+    message: Mapped[str] = mapped_column(Text)
+    author: Mapped[str] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+
+    ticket: Mapped["Ticket"] = relationship(back_populates="events")
+
+
+class TicketHypothesis(Base):
+    __tablename__ = "ticket_hypotheses"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    ticket_id: Mapped[str] = mapped_column(ForeignKey("tickets.id"))
+    text: Mapped[str] = mapped_column(Text)
+    verdict: Mapped[str] = mapped_column(String, default="pending")
+    evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+
+    ticket: Mapped["Ticket"] = relationship(back_populates="hypotheses")
+
+
 class Summary(Base):
     __tablename__ = "summaries"
 

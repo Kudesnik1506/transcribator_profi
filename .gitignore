@@ -23,4 +23,9 @@ build/
 .scratch/
 *.log
 .DS_Store
-.claude/
+# .claude/ is ignored except skills/ — those are versioned agent instructions
+# (see .claude/skills/autofix/SKILL.md), not local session state. Git can't
+# negate a pattern inside an already-ignored directory, hence .claude/* here
+# instead of .claude/ — see https://git-scm.com/docs/gitignore#_pattern_format
+.claude/*
+!.claude/skills/

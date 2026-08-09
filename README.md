@@ -55,6 +55,15 @@ docker compose up -d --build
    ```
 4. У бакета должен быть включён CORS, разрешающий `PUT`-запросы и заголовок `ETag` в ответе (`Access-Control-Expose-Headers: ETag`) — без этого не будет работать прямая multipart-загрузка из браузера.
 5. **CORS проверяет origin браузера**, а не только методы/заголовки — `AllowedOrigins` должен содержать точный публичный адрес фронтенда (например, `https://transcribator.example.com`), а не только `http://localhost:3000` для разработки. Промах здесь незаметен на бэкенде и в curl — браузер молча блокирует запрос ещё до отправки, а `XMLHttpRequest` в веб-консоли показывает это неотличимо от обрыва сети («сеть оборвалась при загрузке части»). При каждой смене адреса фронтенда (новый IP, новый домен, переход на HTTPS) — обновляйте `AllowedOrigins` бакета.
+6. **`AllowedHeaders` тоже нужен, если запрос шлёт заголовок `Content-Type`.** Загрузка Записи (без `Content-Type` в подписи URL) через это не спотыкается, а вот загрузка скриншота к тикету поддержки (см. раздел «Тикеты и автофикс») шлёт `Content-Type: image/png` — браузер делает preflight `OPTIONS`, и без `AllowedHeaders: ["*"]` (или явно `["content-type"]`) в правиле CORS этот preflight падает с той же на вид «сетевой» ошибкой. Итоговый минимальный пример правила:
+   ```json
+   {
+     "AllowedMethods": ["GET", "PUT", "HEAD"],
+     "AllowedOrigins": ["https://transcribator.example.com"],
+     "AllowedHeaders": ["*"],
+     "ExposeHeaders": ["ETag"]
+   }
+   ```
 
 ### Яндекс SpeechKit
 

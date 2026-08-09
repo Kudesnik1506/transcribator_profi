@@ -28,6 +28,12 @@ export default function AdminIndexPage() {
           >
             Лог активности
           </Link>
+          <Link
+            href="/admin/tickets"
+            className="px-6 py-4 transition-colors hover:bg-black/[.02] dark:hover:bg-white/[.03]"
+          >
+            Тикеты поддержки
+          </Link>
         </div>
       </main>
     </AuthGuard>

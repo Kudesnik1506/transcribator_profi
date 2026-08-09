@@ -16,6 +16,7 @@ type NavItem = {
 const BASE_NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Новая запись", exact: true },
   { href: "/recordings", label: "Мои записи" },
+  { href: "/tickets", label: "Поддержка" },
   { href: "/profile", label: "Профиль" },
 ];
 
