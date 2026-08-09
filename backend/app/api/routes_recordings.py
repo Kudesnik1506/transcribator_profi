@@ -34,8 +34,10 @@ EXPORT_BUILDERS = {
 
 
 def _get_owned_recording(db: Session, recording_id: str, user: User) -> Recording:
+    # Admins can open any user's recording (e.g. from /admin/recordings or an
+    # error log) — everyone else only their own.
     recording = db.get(Recording, recording_id)
-    if recording is None or recording.user_id != user.id:
+    if recording is None or (recording.user_id != user.id and user.role != "admin"):
         raise HTTPException(status_code=404, detail="recording not found")
     return recording
 

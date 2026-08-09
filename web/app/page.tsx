@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -17,7 +16,6 @@ import {
 } from "@/lib/api";
 import { clearPendingUpload, computeParts, loadPendingUpload, missingParts, resolveUploadSession } from "@/lib/multipartUpload";
 import { AuthGuard } from "@/components/AuthGuard";
-import { clearToken } from "@/lib/auth";
 import { formatBytes } from "@/lib/format";
 
 type UploadState = "idle" | "uploading" | "error";
@@ -248,23 +246,6 @@ function UploadPageContent() {
         </div>
 
         {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
-        <div className="flex gap-4">
-          <Link href="/recordings" className="text-sm text-zinc-500 underline">
-            Мои Записи
-          </Link>
-          <Link href="/profile" className="text-sm text-zinc-500 underline">
-            Профиль
-          </Link>
-          <button
-            onClick={() => {
-              clearToken();
-              router.push("/login");
-            }}
-            className="text-sm text-zinc-500 underline"
-          >
-            Выйти
-          </button>
-        </div>
       </main>
     </div>
   );

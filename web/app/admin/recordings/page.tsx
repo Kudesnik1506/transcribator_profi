@@ -98,7 +98,12 @@ function AdminRecordingsPageContent() {
           {recordings.map((recording) => (
             <div key={recording.id} className="flex items-center justify-between gap-4 py-4">
               <div className="min-w-0">
-                <p className="truncate font-medium text-black dark:text-zinc-50">{recording.original_filename}</p>
+                <Link
+                  href={`/recordings/${recording.id}`}
+                  className="block truncate font-medium text-black underline-offset-2 hover:underline dark:text-zinc-50"
+                >
+                  {recording.original_filename}
+                </Link>
                 <p className="text-sm text-zinc-500">
                   {recording.user_email ?? "без владельца"} · {formatDate(recording.created_at)} ·{" "}
                   {modeLabel(recording.mode)}

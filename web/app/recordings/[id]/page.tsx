@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { use, useEffect, useState } from "react";
 
 import { downloadExport, getRecording, retryRecording, type ExportFormat, type RecordingDetail } from "@/lib/api";
@@ -83,7 +84,10 @@ function RecordingPageContent({ params }: { params: Promise<{ id: string }> }) {
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-8 px-6 py-12">
       <div>
-        <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">{recording.original_filename}</h1>
+        <Link href="/recordings" className="text-sm text-zinc-500 underline">
+          ← К списку записей
+        </Link>
+        <h1 className="mt-2 text-2xl font-semibold text-black dark:text-zinc-50">{recording.original_filename}</h1>
         <p className="mt-1 text-zinc-500">{statusLabel(recording.status)}</p>
 
         {IN_PROGRESS_STATUSES.has(recording.status) && (

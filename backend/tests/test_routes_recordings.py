@@ -218,6 +218,16 @@ def test_get_recording_404_when_not_owner(client, db_session, auth_headers):
     assert response.status_code == 404
 
 
+def test_get_recording_admin_can_open_any_users_recording(client, db_session, admin_auth_headers):
+    other_owner_recording = Recording(user_id="someone-else", original_filename="f.mp4", s3_key_media="k")
+    db_session.add(other_owner_recording)
+    db_session.commit()
+
+    response = client.get(f"/recordings/{other_owner_recording.id}", headers=admin_auth_headers)
+
+    assert response.status_code == 200
+
+
 def test_get_recording_summary_null_when_not_ready(client, db_session, auth_headers, active_user):
     recording = Recording(
         user_id=active_user.id, original_filename="f.mp4", s3_key_media="k", status="transcribing"

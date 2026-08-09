@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { AuthGuard } from "@/components/AuthGuard";
@@ -48,12 +47,6 @@ function ProfilePageContent() {
       <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Профиль</h1>
 
       {user && <p className="text-zinc-600 dark:text-zinc-400">{user.email}</p>}
-
-      {user?.role === "admin" && (
-        <Link href="/admin" className="w-fit text-sm text-zinc-500 underline">
-          Админка
-        </Link>
-      )}
 
       <section className="flex flex-col gap-3 rounded-2xl border border-solid border-black/[.08] p-6 dark:border-white/[.145]">
         <h2 className="font-medium text-black dark:text-zinc-50">Telegram-уведомления</h2>
