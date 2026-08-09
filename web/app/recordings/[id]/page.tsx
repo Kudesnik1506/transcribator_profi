@@ -17,11 +17,14 @@ export default function RecordingPage({ params }: { params: Promise<{ id: string
   );
 }
 
+type Tab = "summary" | "transcript" | "dialog";
+
 function RecordingPageContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [recording, setRecording] = useState<RecordingDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const [selectedTab, setSelectedTab] = useState<Tab | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,46 +115,74 @@ function RecordingPageContent({ params }: { params: Promise<{ id: string }> }) {
         )}
       </div>
 
-      {recording.summary && (
-        <section>
-          <h2 className="mb-3 text-lg font-medium text-black dark:text-zinc-50">Сводка</h2>
-          <ul className="list-disc space-y-1 pl-5 text-zinc-700 dark:text-zinc-300">
-            {recording.summary.items.map((item, index) => (
-              <li key={index}>{item}</li>
-            ))}
-          </ul>
-        </section>
-      )}
+      {(() => {
+        const showDialog =
+          (recording.status === "done" || recording.status === "partial") && recording.segments.length > 0;
+        const tabs: { id: Tab; label: string }[] = [
+          ...(recording.summary ? [{ id: "summary" as const, label: "Сводка" }] : []),
+          ...(recording.segments.length > 0 ? [{ id: "transcript" as const, label: "Транскрипт" }] : []),
+          ...(showDialog ? [{ id: "dialog" as const, label: "Диалог" }] : []),
+        ];
+        const activeTab = tabs.find((tab) => tab.id === selectedTab)?.id ?? tabs[0]?.id;
 
-      {recording.segments.length > 0 && (
-        <section>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-medium text-black dark:text-zinc-50">Транскрипт</h2>
-            <div className="flex gap-2">
-              {(["txt", "srt", "docx"] as const).map((format) => (
+        if (tabs.length === 0) return null;
+
+        return (
+          <section>
+            <div className="flex gap-1 border-b border-solid border-black/[.08] dark:border-white/[.145]">
+              {tabs.map((tab) => (
                 <button
-                  key={format}
-                  onClick={() => handleExport(format)}
-                  className="rounded-full border border-solid border-black/[.08] px-3 py-1 text-xs transition-colors hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a]"
+                  key={tab.id}
+                  onClick={() => setSelectedTab(tab.id)}
+                  className={[
+                    "-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors",
+                    activeTab === tab.id
+                      ? "border-foreground text-black dark:text-zinc-50"
+                      : "border-transparent text-zinc-500 hover:text-black dark:hover:text-zinc-50",
+                  ].join(" ")}
                 >
-                  .{format}
+                  {tab.label}
                 </button>
               ))}
             </div>
-          </div>
-          <PlayerTranscript
-            recordingId={recording.id}
-            mediaUrl={recording.media_url}
-            mediaDeletedAt={recording.media_deleted_at}
-            contentType={recording.content_type}
-            segments={recording.segments}
-          />
-        </section>
-      )}
 
-      {(recording.status === "done" || recording.status === "partial") && recording.segments.length > 0 && (
-        <Dialog recordingId={recording.id} />
-      )}
+            <div className="pt-6">
+              {activeTab === "summary" && recording.summary && (
+                <ul className="list-disc space-y-1 pl-5 text-zinc-700 dark:text-zinc-300">
+                  {recording.summary.items.map((item, index) => (
+                    <li key={index}>{item}</li>
+                  ))}
+                </ul>
+              )}
+
+              {activeTab === "transcript" && recording.segments.length > 0 && (
+                <>
+                  <div className="mb-3 flex justify-end gap-2">
+                    {(["txt", "srt", "docx"] as const).map((format) => (
+                      <button
+                        key={format}
+                        onClick={() => handleExport(format)}
+                        className="rounded-full border border-solid border-black/[.08] px-3 py-1 text-xs transition-colors hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a]"
+                      >
+                        .{format}
+                      </button>
+                    ))}
+                  </div>
+                  <PlayerTranscript
+                    recordingId={recording.id}
+                    mediaUrl={recording.media_url}
+                    mediaDeletedAt={recording.media_deleted_at}
+                    contentType={recording.content_type}
+                    segments={recording.segments}
+                  />
+                </>
+              )}
+
+              {activeTab === "dialog" && showDialog && <Dialog recordingId={recording.id} />}
+            </div>
+          </section>
+        );
+      })()}
     </main>
   );
 }

@@ -49,8 +49,6 @@ export function Dialog({ recordingId }: { recordingId: string }) {
 
   return (
     <section>
-      <h2 className="mb-3 text-lg font-medium text-black dark:text-zinc-50">Диалог</h2>
-
       <div className="flex flex-col gap-3">
         {messages.map((message, index) => (
           <div key={index} className={message.role === "user" ? "self-end max-w-[80%]" : "max-w-[80%]"}>
