@@ -1,8 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
 
 import { askQuestion, getMessages, type DialogMessage } from "@/lib/api";
+
+// Assistant answers come back as Markdown (see SYSTEM_PROMPT in
+// backend/app/worker/dialog.py) — these overrides keep it compact enough
+// for a chat bubble instead of react-markdown's default block spacing.
+const markdownComponents: Components = {
+  p: (props) => <p className="mb-2 last:mb-0" {...props} />,
+  ul: (props) => <ul className="mb-2 list-disc space-y-1 pl-5 last:mb-0" {...props} />,
+  ol: (props) => <ol className="mb-2 list-decimal space-y-1 pl-5 last:mb-0" {...props} />,
+  strong: (props) => <strong className="font-semibold" {...props} />,
+  a: (props) => <a className="underline" target="_blank" rel="noreferrer" {...props} />,
+};
+
+function MarkdownAnswer({ content }: { content: string }) {
+  return <ReactMarkdown components={markdownComponents}>{content}</ReactMarkdown>;
+}
 
 function TypingIndicator() {
   return (
@@ -60,24 +76,20 @@ export function Dialog({ recordingId }: { recordingId: string }) {
   return (
     <section>
       <div className="flex flex-col gap-3">
-        {messages.map((message, index) => (
-          <div key={index} className={message.role === "user" ? "self-end max-w-[80%]" : "max-w-[80%]"}>
-            <p
-              className={
-                message.role === "user"
-                  ? "rounded-2xl bg-foreground px-4 py-2 text-sm text-background"
-                  : "rounded-2xl bg-zinc-100 px-4 py-2 text-sm text-black dark:bg-zinc-800 dark:text-zinc-50"
-              }
-            >
-              {message.content}
-            </p>
-          </div>
-        ))}
+        {messages.map((message, index) =>
+          message.role === "user" ? (
+            <div key={index} className="self-end max-w-[80%]">
+              <p className="rounded-2xl bg-foreground px-4 py-2 text-sm text-background">{message.content}</p>
+            </div>
+          ) : (
+            <div key={index} className="max-w-[80%] rounded-2xl bg-zinc-100 px-4 py-2 text-sm text-black dark:bg-zinc-800 dark:text-zinc-50">
+              <MarkdownAnswer content={message.content} />
+            </div>
+          )
+        )}
         {streamingAnswer !== null && (
-          <div className="max-w-[80%]">
-            <p className="rounded-2xl bg-zinc-100 px-4 py-2 text-sm text-black dark:bg-zinc-800 dark:text-zinc-50">
-              {streamingAnswer || <TypingIndicator />}
-            </p>
+          <div className="max-w-[80%] rounded-2xl bg-zinc-100 px-4 py-2 text-sm text-black dark:bg-zinc-800 dark:text-zinc-50">
+            {streamingAnswer ? <MarkdownAnswer content={streamingAnswer} /> : <TypingIndicator />}
           </div>
         )}
       </div>
