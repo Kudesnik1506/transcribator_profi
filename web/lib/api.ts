@@ -456,3 +456,22 @@ export function adminListErrorLogs(filters: { level?: string; recordingId?: stri
   const query = params.toString();
   return apiFetch<AdminErrorLog[]>(`/admin/error-logs${query ? `?${query}` : ""}`, "list error logs");
 }
+
+export type AdminActivityLog = {
+  id: string;
+  user_id: string | null;
+  user_email: string | null;
+  action: string;
+  context: Record<string, unknown>;
+  ip: string | null;
+  user_agent: string | null;
+  created_at: string;
+};
+
+export function adminListActivityLogs(filters: { userId?: string; action?: string }): Promise<AdminActivityLog[]> {
+  const params = new URLSearchParams();
+  if (filters.userId) params.set("user_id", filters.userId);
+  if (filters.action) params.set("action", filters.action);
+  const query = params.toString();
+  return apiFetch<AdminActivityLog[]>(`/admin/activity${query ? `?${query}` : ""}`, "list activity logs");
+}

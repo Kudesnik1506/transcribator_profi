@@ -1,10 +1,11 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.activity_log import log_activity
 from app.api.deps import get_active_user
 from app.config import settings
 from app.db import get_db
@@ -38,6 +39,7 @@ class CreateMultipartUploadResponse(BaseModel):
 @router.post("/uploads/multipart", response_model=CreateMultipartUploadResponse)
 def create_multipart(
     payload: CreateMultipartUploadRequest,
+    request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_active_user),
 ) -> CreateMultipartUploadResponse:
@@ -52,6 +54,14 @@ def create_multipart(
     upload_id = create_multipart_upload(s3_key, payload.content_type)
     part_size = settings.multipart_part_size_bytes
     part_count = -(-payload.size_bytes // part_size)
+
+    log_activity(
+        db,
+        user.id,
+        "upload_started",
+        {"filename": payload.filename, "size_bytes": payload.size_bytes},
+        request,
+    )
 
     return CreateMultipartUploadResponse(
         upload_id=upload_id, s3_key=s3_key, part_size=part_size, part_count=part_count
@@ -96,12 +106,19 @@ class CompleteMultipartRequest(S3KeyRequest):
 
 
 @router.post("/uploads/multipart/{upload_id}/complete", status_code=204)
-def complete_multipart(upload_id: str, payload: CompleteMultipartRequest) -> None:
+def complete_multipart(
+    upload_id: str,
+    payload: CompleteMultipartRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_active_user),
+) -> None:
     complete_multipart_upload(
         payload.s3_key,
         upload_id,
         [UploadedPart(part_number=p.part_number, etag=p.etag, size=0) for p in payload.parts],
     )
+    log_activity(db, user.id, "upload_completed", {"s3_key": payload.s3_key}, request)
 
 
 @router.post("/uploads/multipart/{upload_id}/abort", status_code=204)

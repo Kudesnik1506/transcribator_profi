@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     # scale), text artifacts (Транскрипт/Сводка/Диалог) cost pennies to keep.
     media_retention_days: int = 30
     data_retention_days: int = 180
+    # Activity log: who did what, when — for diagnosing tickets and security
+    # review. Shorter horizon than data_retention_days on purpose — it's
+    # operational telemetry, not user content, so it needn't outlive it.
+    activity_retention_days: int = 90
 
 
 settings = Settings()

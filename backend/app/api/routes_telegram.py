@@ -1,10 +1,11 @@
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.activity_log import log_activity
 from app.api.deps import get_active_user
 from app.config import settings
 from app.db import get_db
@@ -35,10 +36,13 @@ def create_link_code(db: Session = Depends(get_db), user: User = Depends(get_act
 
 
 @router.post("/telegram/unlink", status_code=204)
-def unlink_telegram(db: Session = Depends(get_db), user: User = Depends(get_active_user)) -> None:
+def unlink_telegram(
+    request: Request, db: Session = Depends(get_db), user: User = Depends(get_active_user)
+) -> None:
     user.telegram_chat_id = None
     db.query(TelegramLinkCode).filter_by(user_id=user.id).delete()
     db.commit()
+    log_activity(db, user.id, "telegram_unlinked", {}, request)
 
 
 def _reply(chat_id: int, text: str) -> None:

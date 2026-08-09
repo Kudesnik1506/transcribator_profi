@@ -7,7 +7,7 @@ from sqlalchemy.pool import StaticPool
 import app.models  # noqa: F401 - registers tables on Base.metadata
 from app.api.main import app
 from app.db import Base, get_db
-from app.models import Chunk, ErrorLog, Message, Recording, Segment, Summary, User
+from app.models import ActivityLog, Chunk, ErrorLog, Message, Recording, Segment, Summary, User
 
 
 @pytest.fixture
@@ -91,6 +91,18 @@ def test_approve_user_404_when_missing(client, admin_auth_headers):
     response = client.post("/admin/users/does-not-exist/approve", headers=admin_auth_headers)
 
     assert response.status_code == 404
+
+
+def test_approve_user_leaves_activity_log(client, db_session, admin_auth_headers, admin_user):
+    pending = User(email="pending@example.com", password_hash="x", role="user", status="pending")
+    db_session.add(pending)
+    db_session.commit()
+
+    client.post(f"/admin/users/{pending.id}/approve", headers=admin_auth_headers)
+
+    log = db_session.query(ActivityLog).filter_by(user_id=admin_user.id, action="user_approved").first()
+    assert log is not None
+    assert log.context == {"target_user_id": pending.id}
 
 
 # --- recordings ---
@@ -234,3 +246,57 @@ def test_list_error_logs_filters_by_recording_id_prefix(client, db_session, admi
     response = client.get(f"/admin/error-logs?recording_id={recording.id[:8]}", headers=admin_auth_headers)
 
     assert [log["message"] for log in response.json()] == ["этой записи"]
+
+
+# --- activity logs ---
+
+
+def test_activity_routes_reject_missing_auth(client):
+    assert client.get("/admin/activity").status_code == 401
+
+
+def test_activity_routes_reject_regular_user(client, auth_headers):
+    assert client.get("/admin/activity", headers=auth_headers).status_code == 403
+
+
+def test_list_activity_logs_returns_all_with_user_email(client, db_session, admin_auth_headers, active_user):
+    db_session.add(ActivityLog(user_id=active_user.id, action="login", context={}))
+    db_session.commit()
+
+    response = client.get("/admin/activity", headers=admin_auth_headers)
+
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+    assert response.json()[0]["action"] == "login"
+    assert response.json()[0]["user_email"] == active_user.email
+
+
+def test_list_activity_logs_filters_by_user(client, db_session, admin_auth_headers, active_user, admin_user):
+    db_session.add(ActivityLog(user_id=active_user.id, action="login", context={}))
+    db_session.add(ActivityLog(user_id=admin_user.id, action="login", context={}))
+    db_session.commit()
+
+    response = client.get(f"/admin/activity?user_id={active_user.id}", headers=admin_auth_headers)
+
+    assert len(response.json()) == 1
+    assert response.json()[0]["user_id"] == active_user.id
+
+
+def test_list_activity_logs_filters_by_action(client, db_session, admin_auth_headers, active_user):
+    db_session.add(ActivityLog(user_id=active_user.id, action="login", context={}))
+    db_session.add(ActivityLog(user_id=active_user.id, action="logout", context={}))
+    db_session.commit()
+
+    response = client.get("/admin/activity?action=logout", headers=admin_auth_headers)
+
+    assert [log["action"] for log in response.json()] == ["logout"]
+
+
+def test_list_activity_logs_shows_null_user_email_for_anonymized_rows(client, db_session, admin_auth_headers):
+    db_session.add(ActivityLog(user_id=None, action="delete_account", context={}))
+    db_session.commit()
+
+    response = client.get("/admin/activity", headers=admin_auth_headers)
+
+    assert response.json()[0]["user_id"] is None
+    assert response.json()[0]["user_email"] is None

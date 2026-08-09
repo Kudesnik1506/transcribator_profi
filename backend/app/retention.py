@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.error_log import log_error
-from app.models import Recording
+from app.models import ActivityLog, Recording
 from app.recording_deletion import purge_recording
 from app.s3 import delete_media
 
@@ -44,19 +44,35 @@ def purge_expired_recordings(db: Session, now_utc: datetime, retention_days: int
     return len(recordings)
 
 
+def purge_expired_activity_logs(db: Session, now_utc: datetime, retention_days: int) -> int:
+    cutoff = now_utc - timedelta(days=retention_days)
+    count = db.query(ActivityLog).filter(ActivityLog.created_at < cutoff).delete()
+    db.commit()
+    return count
+
+
 def run_retention(
     db: Session,
     now_utc: datetime,
     media_retention_days: int | None = None,
     data_retention_days: int | None = None,
+    activity_retention_days: int | None = None,
 ) -> None:
     media_purged = purge_expired_media(db, now_utc, media_retention_days or settings.media_retention_days)
     recordings_purged = purge_expired_recordings(db, now_utc, data_retention_days or settings.data_retention_days)
+    activity_purged = purge_expired_activity_logs(
+        db, now_utc, activity_retention_days or settings.activity_retention_days
+    )
 
     log_error(
         db,
         None,
-        f"ретеншн: удалено медиа у {media_purged} Записей, удалено целиком {recordings_purged} Записей",
-        context={"media_purged": media_purged, "recordings_purged": recordings_purged},
+        f"ретеншн: удалено медиа у {media_purged} Записей, удалено целиком {recordings_purged} Записей, "
+        f"удалено {activity_purged} строк лога активности",
+        context={
+            "media_purged": media_purged,
+            "recordings_purged": recordings_purged,
+            "activity_purged": activity_purged,
+        },
         level="info",
     )

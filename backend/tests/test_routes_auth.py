@@ -10,7 +10,7 @@ import app.models  # noqa: F401 - registers tables on Base.metadata
 import app.recording_deletion as recording_deletion
 from app.api.main import app
 from app.db import Base, get_db
-from app.models import Recording, RecordingShare, TelegramLinkCode, User
+from app.models import ActivityLog, Recording, RecordingShare, TelegramLinkCode, User
 
 
 @pytest.fixture
@@ -188,3 +188,36 @@ def test_token_invalid_after_account_deleted(client, db_session, auth_headers, a
     response = client.get("/auth/me", headers=auth_headers)
 
     assert response.status_code == 401
+
+
+def test_register_leaves_activity_log(client, db_session):
+    client.post("/auth/register", json={"email": "a@example.com", "password": "verysecret123"})
+
+    user = db_session.query(User).filter_by(email="a@example.com").first()
+    log = db_session.query(ActivityLog).filter_by(user_id=user.id, action="register").first()
+    assert log is not None
+    assert log.context == {"email": "a@example.com"}
+
+
+def test_login_leaves_activity_log(client, db_session):
+    client.post("/auth/register", json={"email": "a@example.com", "password": "verysecret123"})
+    user = db_session.query(User).filter_by(email="a@example.com").first()
+
+    client.post("/auth/login", json={"email": "a@example.com", "password": "verysecret123"})
+
+    assert db_session.query(ActivityLog).filter_by(user_id=user.id, action="login").count() == 1
+
+
+def test_delete_me_anonymizes_prior_activity_logs_instead_of_deleting_them(
+    client, db_session, auth_headers, active_user, monkeypatch
+):
+    monkeypatch.setattr(recording_deletion, "delete_media", lambda key: None)
+    db_session.add(ActivityLog(user_id=active_user.id, action="login", context={}))
+    db_session.commit()
+
+    response = client.delete("/auth/me", headers=auth_headers)
+
+    assert response.status_code == 204
+    logs = db_session.query(ActivityLog).filter_by(action="login").all()
+    assert len(logs) == 1
+    assert logs[0].user_id is None

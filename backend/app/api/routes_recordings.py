@@ -1,11 +1,12 @@
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.activity_log import log_activity
 from app.api.deps import get_active_user
 from app.config import settings
 from app.db import SessionLocal, get_db
@@ -217,6 +218,7 @@ def list_shared_recordings(
 @router.post("/recordings", response_model=RecordingResponse, status_code=201)
 async def create_recording(
     payload: CreateRecordingRequest,
+    request: Request,
     db: Session = Depends(get_db),
     queue=Depends(get_queue),
     user: User = Depends(get_active_user),
@@ -236,6 +238,10 @@ async def create_recording(
     db.refresh(recording)
 
     await queue.enqueue_job("process_recording_job", recording.id)
+
+    log_activity(
+        db, user.id, "recording_created", {"recording_id": recording.id, "filename": recording.original_filename}, request
+    )
 
     return RecordingResponse(id=recording.id, status=recording.status)
 
@@ -288,7 +294,11 @@ def search_recording(
 
 @router.get("/recordings/{recording_id}/export/{fmt}")
 def export_recording(
-    recording_id: str, fmt: str, db: Session = Depends(get_db), user: User = Depends(get_active_user)
+    recording_id: str,
+    fmt: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_active_user),
 ) -> Response:
     if fmt not in EXPORT_CONTENT_TYPES:
         raise HTTPException(status_code=404, detail="unknown export format")
@@ -301,6 +311,8 @@ def export_recording(
 
     filename = export_filename(recording.original_filename, fmt)
     content = EXPORT_BUILDERS[fmt](recording, segments)
+
+    log_activity(db, user.id, "recording_exported", {"recording_id": recording.id, "format": fmt}, request)
 
     return Response(
         content=content,
@@ -341,6 +353,7 @@ def list_messages(
 def ask_question(
     recording_id: str,
     payload: AskQuestionRequest,
+    request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_active_user),
 ) -> StreamingResponse:
@@ -365,6 +378,8 @@ def ask_question(
 
     db.add(Message(recording_id=recording_id, role="user", content=payload.content))
     db.commit()
+
+    log_activity(db, user.id, "dialog_question_asked", {"recording_id": recording.id}, request)
 
     def stream_and_save_answer():
         answer_parts: list[str] = []
@@ -397,6 +412,7 @@ def ask_question(
 def create_share(
     recording_id: str,
     payload: CreateShareRequest,
+    request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_active_user),
 ) -> ShareResponse:
@@ -423,6 +439,14 @@ def create_share(
     db.commit()
     db.refresh(share)
 
+    log_activity(
+        db,
+        user.id,
+        "recording_shared",
+        {"recording_id": recording.id, "with_email": recipient.email, "can_ask": payload.can_ask},
+        request,
+    )
+
     return ShareResponse(id=share.id, email=recipient.email, can_ask=share.can_ask, created_at=share.created_at)
 
 
@@ -447,7 +471,11 @@ def list_shares(
 
 @router.delete("/recordings/{recording_id}/shares/{share_id}", status_code=204)
 def revoke_share(
-    recording_id: str, share_id: str, db: Session = Depends(get_db), user: User = Depends(get_active_user)
+    recording_id: str,
+    share_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_active_user),
 ) -> None:
     recording = _get_owned_recording(db, recording_id, user)
 
@@ -457,3 +485,5 @@ def revoke_share(
 
     db.delete(share)
     db.commit()
+
+    log_activity(db, user.id, "share_revoked", {"recording_id": recording.id, "share_id": share_id}, request)

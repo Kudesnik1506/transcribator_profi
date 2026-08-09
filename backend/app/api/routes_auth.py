@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
+from app.activity_log import log_activity
 from app.api.deps import get_current_user
 from app.auth import create_access_token, hash_password, verify_password
 from app.db import get_db
-from app.models import Recording, RecordingShare, TelegramLinkCode, User
+from app.models import ActivityLog, Recording, RecordingShare, TelegramLinkCode, User
 from app.recording_deletion import purge_recording
 
 router = APIRouter()
@@ -27,7 +28,7 @@ class RegisterResponse(BaseModel):
 
 
 @router.post("/auth/register", response_model=RegisterResponse, status_code=201)
-def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
+def register(payload: RegisterRequest, request: Request, db: Session = Depends(get_db)) -> RegisterResponse:
     if len(payload.password) < MIN_PASSWORD_LENGTH:
         raise HTTPException(status_code=422, detail=f"пароль должен быть не короче {MIN_PASSWORD_LENGTH} символов")
     if len(payload.password.encode("utf-8")) > MAX_PASSWORD_BYTES:
@@ -47,6 +48,8 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> Registe
     db.commit()
     db.refresh(user)
 
+    log_activity(db, user.id, "register", {"email": user.email}, request)
+
     return RegisterResponse(id=user.id, status=user.status)
 
 
@@ -61,12 +64,14 @@ class LoginResponse(BaseModel):
 
 
 @router.post("/auth/login", response_model=LoginResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
+def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> LoginResponse:
     user = db.query(User).filter_by(email=payload.email).first()
     if user is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="неверный email или пароль")
     if user.status == "blocked":
         raise HTTPException(status_code=403, detail="доступ заблокирован")
+
+    log_activity(db, user.id, "login", {}, request)
 
     return LoginResponse(access_token=create_access_token(user.id))
 
@@ -91,12 +96,17 @@ def me(user: User = Depends(get_current_user)) -> MeResponse:
 
 
 @router.delete("/auth/me", status_code=204)
-def delete_me(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> None:
+def delete_me(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> None:
+    log_activity(db, user.id, "delete_account", {}, request)
+
     recordings = db.query(Recording).filter_by(user_id=user.id).all()
     for recording in recordings:
         purge_recording(db, recording)
 
     db.query(RecordingShare).filter_by(shared_with_user_id=user.id).delete()
     db.query(TelegramLinkCode).filter_by(user_id=user.id).delete()
+    # Anonymize rather than delete — keeps aggregate activity history
+    # accurate without retaining a link to the now-gone account.
+    db.query(ActivityLog).filter_by(user_id=user.id).update({"user_id": None})
     db.delete(user)
     db.commit()

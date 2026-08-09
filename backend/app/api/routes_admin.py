@@ -1,12 +1,13 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.activity_log import log_activity
 from app.api.deps import get_admin_user
 from app.db import get_db
-from app.models import ErrorLog, Recording, User
+from app.models import ActivityLog, ErrorLog, Recording, User
 from app.recording_deletion import purge_recording
 
 router = APIRouter(prefix="/admin", dependencies=[Depends(get_admin_user)])
@@ -38,22 +39,26 @@ def _get_user_or_404(db: Session, user_id: str) -> User:
 
 
 @router.post("/users/{user_id}/approve", response_model=AdminUserResponse)
-def approve_user(user_id: str, db: Session = Depends(get_db)) -> AdminUserResponse:
+def approve_user(
+    user_id: str, request: Request, db: Session = Depends(get_db), admin: User = Depends(get_admin_user)
+) -> AdminUserResponse:
     user = _get_user_or_404(db, user_id)
     user.status = "active"
     db.commit()
+    log_activity(db, admin.id, "user_approved", {"target_user_id": user_id}, request)
     return _user_response(user)
 
 
 @router.post("/users/{user_id}/block", response_model=AdminUserResponse)
 def block_user(
-    user_id: str, db: Session = Depends(get_db), admin: User = Depends(get_admin_user)
+    user_id: str, request: Request, db: Session = Depends(get_db), admin: User = Depends(get_admin_user)
 ) -> AdminUserResponse:
     if user_id == admin.id:
         raise HTTPException(status_code=400, detail="нельзя заблокировать самого себя")
     user = _get_user_or_404(db, user_id)
     user.status = "blocked"
     db.commit()
+    log_activity(db, admin.id, "user_blocked", {"target_user_id": user_id}, request)
     return _user_response(user)
 
 
@@ -99,12 +104,15 @@ def list_all_recordings(
 
 
 @router.delete("/recordings/{recording_id}", status_code=204)
-def delete_recording(recording_id: str, db: Session = Depends(get_db)) -> None:
+def delete_recording(
+    recording_id: str, request: Request, db: Session = Depends(get_db), admin: User = Depends(get_admin_user)
+) -> None:
     recording = db.get(Recording, recording_id)
     if recording is None:
         raise HTTPException(status_code=404, detail="запись не найдена")
 
     purge_recording(db, recording)
+    log_activity(db, admin.id, "recording_deleted_by_admin", {"recording_id": recording_id}, request)
 
 
 class AdminErrorLogResponse(BaseModel):
@@ -136,6 +144,46 @@ def list_error_logs(
             level=log.level,
             message=log.message,
             context=log.context,
+            created_at=log.created_at,
+        )
+        for log in logs
+    ]
+
+
+class AdminActivityLogResponse(BaseModel):
+    id: str
+    user_id: str | None
+    user_email: str | None
+    action: str
+    context: dict
+    ip: str | None
+    user_agent: str | None
+    created_at: datetime
+
+
+@router.get("/activity", response_model=list[AdminActivityLogResponse])
+def list_activity_logs(
+    user_id: str | None = None,
+    action: str | None = None,
+    db: Session = Depends(get_db),
+) -> list[AdminActivityLogResponse]:
+    query = db.query(ActivityLog).order_by(ActivityLog.created_at.desc())
+    if user_id:
+        query = query.filter(ActivityLog.user_id == user_id)
+    if action:
+        query = query.filter(ActivityLog.action == action)
+
+    logs = query.all()
+    users_by_id = {u.id: u for u in db.query(User).all()}
+    return [
+        AdminActivityLogResponse(
+            id=log.id,
+            user_id=log.user_id,
+            user_email=users_by_id[log.user_id].email if log.user_id in users_by_id else None,
+            action=log.action,
+            context=log.context,
+            ip=log.ip,
+            user_agent=log.user_agent,
             created_at=log.created_at,
         )
         for log in logs

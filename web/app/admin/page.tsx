@@ -22,6 +22,12 @@ export default function AdminIndexPage() {
           <Link href="/admin/errors" className="px-6 py-4 transition-colors hover:bg-black/[.02] dark:hover:bg-white/[.03]">
             Логи ошибок
           </Link>
+          <Link
+            href="/admin/activity"
+            className="px-6 py-4 transition-colors hover:bg-black/[.02] dark:hover:bg-white/[.03]"
+          >
+            Лог активности
+          </Link>
         </div>
       </main>
     </AuthGuard>

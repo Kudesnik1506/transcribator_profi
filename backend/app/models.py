@@ -122,6 +122,18 @@ class RecordingShare(Base):
     created_at: Mapped[datetime] = mapped_column(default=_now)
 
 
+class ActivityLog(Base):
+    __tablename__ = "activity_logs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    action: Mapped[str] = mapped_column(String)
+    context: Mapped[dict] = mapped_column(JSON, default=dict)
+    ip: Mapped[str | None] = mapped_column(String, nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+
+
 class Summary(Base):
     __tablename__ = "summaries"
 
