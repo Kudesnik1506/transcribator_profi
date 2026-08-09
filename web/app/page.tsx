@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   abortMultipartUpload,
@@ -18,6 +18,7 @@ import {
 import { clearPendingUpload, computeParts, loadPendingUpload, missingParts, resolveUploadSession } from "@/lib/multipartUpload";
 import { AuthGuard } from "@/components/AuthGuard";
 import { clearToken } from "@/lib/auth";
+import { formatBytes } from "@/lib/format";
 
 type UploadState = "idle" | "uploading" | "error";
 
@@ -31,7 +32,9 @@ export default function UploadPage() {
 
 function UploadPageContent() {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [isDragActive, setIsDragActive] = useState(false);
   const [state, setState] = useState<UploadState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [progressPercent, setProgressPercent] = useState(0);
@@ -96,6 +99,10 @@ function UploadPageContent() {
     }
   }
 
+  function handleFiles(fileList: FileList | null) {
+    setFile(fileList?.[0] ?? null);
+  }
+
   async function handleCancel() {
     const pending = loadPendingUpload();
     if (pending) {
@@ -120,13 +127,62 @@ function UploadPageContent() {
         <p className="text-center text-zinc-600 dark:text-zinc-400">
           Загрузите аудио или видео — получите Транскрипт и Сводку.
         </p>
-        <input
-          type="file"
-          accept="audio/*,video/*"
-          onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-          disabled={state === "uploading"}
-          className="w-full text-sm text-zinc-700 dark:text-zinc-300"
-        />
+        <div
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setIsDragActive(true);
+          }}
+          onDragLeave={() => setIsDragActive(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setIsDragActive(false);
+            handleFiles(event.dataTransfer.files);
+          }}
+          className={[
+            "flex w-full cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed p-8 text-center transition-colors",
+            isDragActive
+              ? "border-foreground bg-black/[.04] dark:bg-white/[.06]"
+              : "border-black/[.15] dark:border-white/[.2]",
+            state === "uploading" ? "pointer-events-none opacity-50" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          <svg
+            className="h-8 w-8 text-zinc-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+            stroke="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z"
+            />
+          </svg>
+          {file ? (
+            <>
+              <p className="font-medium text-black dark:text-zinc-50">{file.name}</p>
+              <p className="text-sm text-zinc-500">{formatBytes(file.size)} — нажмите, чтобы выбрать другой файл</p>
+            </>
+          ) : (
+            <>
+              <p className="font-medium text-black dark:text-zinc-50">Нажмите или перетащите файл сюда</p>
+              <p className="text-sm text-zinc-500">Аудио или видео</p>
+            </>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="audio/*,video/*"
+            onChange={(event) => handleFiles(event.target.files)}
+            disabled={state === "uploading"}
+            className="hidden"
+          />
+        </div>
 
         <div className="flex w-full flex-col gap-2">
           <label className="flex items-start gap-2 rounded-lg border border-solid border-black/[.08] p-3 text-sm dark:border-white/[.145]">
