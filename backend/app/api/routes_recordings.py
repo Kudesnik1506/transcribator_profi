@@ -55,6 +55,34 @@ def _get_accessible_recording(db: Session, recording_id: str, user: User) -> Rec
     return recording
 
 
+def _get_dialog_recording(db: Session, recording_id: str, user: User) -> Recording:
+    # Dialog (asking new questions): owner, admin, or a share with can_ask=True.
+    recording = db.get(Recording, recording_id)
+    if recording is None:
+        raise HTTPException(status_code=404, detail="recording not found")
+    if recording.user_id == user.id or user.role == "admin":
+        return recording
+    shared = (
+        db.query(RecordingShare)
+        .filter_by(recording_id=recording.id, shared_with_user_id=user.id, can_ask=True)
+        .first()
+    )
+    if shared is None:
+        raise HTTPException(status_code=404, detail="recording not found")
+    return recording
+
+
+def _can_ask(db: Session, recording: Recording, user: User) -> bool:
+    if recording.user_id == user.id or user.role == "admin":
+        return True
+    shared = (
+        db.query(RecordingShare)
+        .filter_by(recording_id=recording.id, shared_with_user_id=user.id, can_ask=True)
+        .first()
+    )
+    return shared is not None
+
+
 class CreateRecordingRequest(BaseModel):
     s3_key: str
     original_filename: str
@@ -92,6 +120,7 @@ class RecordingDetailResponse(BaseModel):
     summary: SummaryResponse | None
     is_owner: bool
     owner_email: str | None
+    can_ask: bool
 
 
 class RecordingListItemResponse(BaseModel):
@@ -107,11 +136,13 @@ class RecordingListItemResponse(BaseModel):
 class ShareResponse(BaseModel):
     id: str
     email: str
+    can_ask: bool
     created_at: datetime
 
 
 class CreateShareRequest(BaseModel):
     email: str
+    can_ask: bool = False
 
 
 class MessageResponse(BaseModel):
@@ -231,6 +262,7 @@ def get_recording(
         summary=SummaryResponse(items=recording.summary.items) if recording.summary else None,
         is_owner=recording.user_id == user.id,
         owner_email=owner.email if owner else None,
+        can_ask=_can_ask(db, recording, user),
     )
 
 
@@ -312,7 +344,7 @@ def ask_question(
     db: Session = Depends(get_db),
     user: User = Depends(get_active_user),
 ) -> StreamingResponse:
-    recording = _get_owned_recording(db, recording_id, user)
+    recording = _get_dialog_recording(db, recording_id, user)
 
     segments = sorted(recording.segments, key=lambda s: s.start_ms)
     if recording.status not in ("done", "partial") or not segments:
@@ -382,12 +414,16 @@ def create_share(
         .first()
     )
     if share is None:
-        share = RecordingShare(recording_id=recording.id, shared_with_user_id=recipient.id)
+        share = RecordingShare(recording_id=recording.id, shared_with_user_id=recipient.id, can_ask=payload.can_ask)
         db.add(share)
-        db.commit()
-        db.refresh(share)
+    else:
+        # Re-sharing updates the permission level instead of erroring — lets
+        # the owner upgrade/downgrade access without a separate endpoint.
+        share.can_ask = payload.can_ask
+    db.commit()
+    db.refresh(share)
 
-    return ShareResponse(id=share.id, email=recipient.email, created_at=share.created_at)
+    return ShareResponse(id=share.id, email=recipient.email, can_ask=share.can_ask, created_at=share.created_at)
 
 
 @router.get("/recordings/{recording_id}/shares", response_model=list[ShareResponse])
@@ -403,7 +439,10 @@ def list_shares(
         .order_by(RecordingShare.created_at.desc())
         .all()
     )
-    return [ShareResponse(id=share.id, email=email, created_at=share.created_at) for share, email in shares]
+    return [
+        ShareResponse(id=share.id, email=email, can_ask=share.can_ask, created_at=share.created_at)
+        for share, email in shares
+    ]
 
 
 @router.delete("/recordings/{recording_id}/shares/{share_id}", status_code=204)

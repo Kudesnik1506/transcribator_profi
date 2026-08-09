@@ -38,6 +38,7 @@ function RecordingPageContent({ params }: { params: Promise<{ id: string }> }) {
   const [selectedTab, setSelectedTab] = useState<Tab | null>(null);
   const [shares, setShares] = useState<RecordingShare[]>([]);
   const [shareEmail, setShareEmail] = useState("");
+  const [shareCanAsk, setShareCanAsk] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
 
@@ -80,8 +81,9 @@ function RecordingPageContent({ params }: { params: Promise<{ id: string }> }) {
     setSharing(true);
     setShareError(null);
     try {
-      await shareRecording(recording.id, email);
+      await shareRecording(recording.id, email, shareCanAsk);
       setShareEmail("");
+      setShareCanAsk(false);
       const updated = await listShares(recording.id);
       setShares(updated);
     } catch (err) {
@@ -176,8 +178,8 @@ function RecordingPageContent({ params }: { params: Promise<{ id: string }> }) {
         <section className="flex flex-col gap-3 rounded-2xl border border-solid border-black/[.08] p-6 dark:border-white/[.145]">
           <h2 className="font-medium text-black dark:text-zinc-50">Поделиться записью</h2>
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            Доступ на чтение — зарегистрированный аккаунт увидит транскрипт, сводку и диалог, но не сможет
-            задавать новые вопросы или повторять обработку.
+            Зарегистрированный аккаунт увидит транскрипт, сводку и диалог. Повтор обработки остаётся только у
+            вас.
           </p>
           <div className="flex gap-2">
             <input
@@ -197,12 +199,25 @@ function RecordingPageContent({ params }: { params: Promise<{ id: string }> }) {
               {sharing ? "Делимся…" : "Дать доступ"}
             </button>
           </div>
+          <label className="flex w-fit items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+            <input
+              type="checkbox"
+              checked={shareCanAsk}
+              onChange={(event) => setShareCanAsk(event.target.checked)}
+            />
+            Разрешить задавать вопросы в Диалоге
+          </label>
           {shareError && <p className="text-sm text-red-600">{shareError}</p>}
           {shares.length > 0 && (
             <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
               {shares.map((share) => (
                 <li key={share.id} className="flex items-center justify-between gap-4 py-2">
-                  <span className="text-sm text-zinc-700 dark:text-zinc-300">{share.email}</span>
+                  <span className="text-sm text-zinc-700 dark:text-zinc-300">
+                    {share.email}
+                    <span className="ml-2 text-xs text-zinc-500">
+                      {share.can_ask ? "просмотр + диалог" : "только просмотр"}
+                    </span>
+                  </span>
                   <button
                     onClick={() => handleRevokeShare(share.id)}
                     className="text-sm text-red-600 underline"
@@ -280,7 +295,7 @@ function RecordingPageContent({ params }: { params: Promise<{ id: string }> }) {
               )}
 
               {activeTab === "dialog" && showDialog && (
-                <Dialog recordingId={recording.id} readOnly={!recording.is_owner} />
+                <Dialog recordingId={recording.id} readOnly={!recording.can_ask} />
               )}
             </div>
           </section>

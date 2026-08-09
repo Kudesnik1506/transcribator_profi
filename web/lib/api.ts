@@ -27,6 +27,7 @@ export type RecordingDetail = {
   summary: RecordingSummary | null;
   is_owner: boolean;
   owner_email: string | null;
+  can_ask: boolean;
 };
 
 export type RecordingListItem = {
@@ -249,11 +250,12 @@ export function listSharedRecordings(): Promise<RecordingListItem[]> {
 export type RecordingShare = {
   id: string;
   email: string;
+  can_ask: boolean;
   created_at: string;
 };
 
-export function shareRecording(recordingId: string, email: string): Promise<RecordingShare> {
-  return postJson(`/recordings/${recordingId}/shares`, "share recording", { email });
+export function shareRecording(recordingId: string, email: string, canAsk: boolean): Promise<RecordingShare> {
+  return postJson(`/recordings/${recordingId}/shares`, "share recording", { email, can_ask: canAsk });
 }
 
 export function listShares(recordingId: string): Promise<RecordingShare[]> {

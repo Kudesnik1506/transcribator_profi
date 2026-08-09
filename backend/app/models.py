@@ -118,6 +118,7 @@ class RecordingShare(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     recording_id: Mapped[str] = mapped_column(ForeignKey("recordings.id"))
     shared_with_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    can_ask: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(default=_now)
 
 
