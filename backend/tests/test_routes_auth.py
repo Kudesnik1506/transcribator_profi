@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -5,9 +7,10 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401 - registers tables on Base.metadata
+import app.recording_deletion as recording_deletion
 from app.api.main import app
 from app.db import Base, get_db
-from app.models import User
+from app.models import Recording, RecordingShare, TelegramLinkCode, User
 
 
 @pytest.fixture
@@ -128,5 +131,60 @@ def test_me_rejects_missing_token(client):
 
 def test_me_rejects_invalid_token(client):
     response = client.get("/auth/me", headers={"Authorization": "Bearer garbage"})
+
+    assert response.status_code == 401
+
+
+def test_delete_me_removes_user_and_owned_recordings(
+    client, db_session, auth_headers, active_user, monkeypatch
+):
+    monkeypatch.setattr(recording_deletion, "delete_media", lambda key: None)
+    recording = Recording(user_id=active_user.id, original_filename="f.mp4", s3_key_media="k")
+    db_session.add(recording)
+    db_session.add(
+        TelegramLinkCode(
+            user_id=active_user.id, code="abc123", expires_at=datetime.now(timezone.utc) + timedelta(minutes=10)
+        )
+    )
+    db_session.commit()
+
+    response = client.delete("/auth/me", headers=auth_headers)
+
+    assert response.status_code == 204
+    assert db_session.get(User, active_user.id) is None
+    assert db_session.get(Recording, recording.id) is None
+    assert db_session.query(TelegramLinkCode).filter_by(user_id=active_user.id).first() is None
+
+
+def test_delete_me_removes_shares_granted_to_the_user(client, db_session, auth_headers, active_user):
+    owner = User(email="owner@example.com", password_hash="x", role="user", status="active")
+    db_session.add(owner)
+    db_session.commit()
+    recording = Recording(user_id=owner.id, original_filename="f.mp4", s3_key_media="k")
+    db_session.add(recording)
+    db_session.commit()
+    db_session.add(RecordingShare(recording_id=recording.id, shared_with_user_id=active_user.id))
+    db_session.commit()
+
+    response = client.delete("/auth/me", headers=auth_headers)
+
+    assert response.status_code == 204
+    assert db_session.query(RecordingShare).filter_by(shared_with_user_id=active_user.id).first() is None
+    # Owner and their recording are untouched.
+    assert db_session.get(User, owner.id) is not None
+    assert db_session.get(Recording, recording.id) is not None
+
+
+def test_delete_me_requires_auth(client):
+    response = client.delete("/auth/me")
+
+    assert response.status_code == 401
+
+
+def test_token_invalid_after_account_deleted(client, db_session, auth_headers, active_user, monkeypatch):
+    monkeypatch.setattr(recording_deletion, "delete_media", lambda key: None)
+    client.delete("/auth/me", headers=auth_headers)
+
+    response = client.get("/auth/me", headers=auth_headers)
 
     assert response.status_code == 401

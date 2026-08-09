@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { listRecordings, type RecordingListItem } from "@/lib/api";
+import { listRecordings, listSharedRecordings, type RecordingListItem } from "@/lib/api";
 import { formatDate } from "@/lib/date";
 import { TERMINAL_STATUSES, modeLabel, statusLabel } from "@/lib/recordingStatus";
 import { AuthGuard } from "@/components/AuthGuard";
@@ -18,6 +18,7 @@ export default function RecordingsListPage() {
 
 function RecordingsListPageContent() {
   const [recordings, setRecordings] = useState<RecordingListItem[] | null>(null);
+  const [sharedRecordings, setSharedRecordings] = useState<RecordingListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -45,44 +46,79 @@ function RecordingsListPageContent() {
     };
   }, []);
 
+  useEffect(() => {
+    listSharedRecordings()
+      .then(setSharedRecordings)
+      .catch(() => {
+        // необязательная секция — молча оставляем список пустым
+      });
+  }, []);
+
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-12">
-      <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Мои Записи</h1>
+    <main className="mx-auto flex max-w-3xl flex-col gap-10 px-6 py-12">
+      <div className="flex flex-col gap-6">
+        <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Мои Записи</h1>
 
-      {error && <p className="text-red-600">{error}</p>}
+        {error && <p className="text-red-600">{error}</p>}
 
-      {recordings === null && !error && <p className="text-zinc-500">Загрузка…</p>}
+        {recordings === null && !error && <p className="text-zinc-500">Загрузка…</p>}
 
-      {recordings !== null && recordings.length === 0 && (
-        <p className="text-zinc-500">
-          Записей пока нет.{" "}
-          <Link href="/" className="underline">
-            Загрузите первую
-          </Link>
-          , чтобы получить Транскрипт и Сводку.
-        </p>
-      )}
-
-      {recordings !== null && recordings.length > 0 && (
-        <div className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
-          {recordings.map((recording) => (
-            <Link
-              key={recording.id}
-              href={`/recordings/${recording.id}`}
-              className="flex items-center justify-between gap-4 py-4 transition-colors hover:bg-black/[.02] dark:hover:bg-white/[.03]"
-            >
-              <div className="min-w-0">
-                <p className="truncate font-medium text-black dark:text-zinc-50">{recording.original_filename}</p>
-                <p className="text-sm text-zinc-500">
-                  {formatDate(recording.created_at)} · {modeLabel(recording.mode)}
-                </p>
-              </div>
-              <div className="shrink-0 text-right">
-                <p className="text-sm text-zinc-700 dark:text-zinc-300">{statusLabel(recording.status)}</p>
-                <p className="text-xs text-zinc-400">{recording.progress_percent}%</p>
-              </div>
+        {recordings !== null && recordings.length === 0 && (
+          <p className="text-zinc-500">
+            Записей пока нет.{" "}
+            <Link href="/" className="underline">
+              Загрузите первую
             </Link>
-          ))}
+            , чтобы получить Транскрипт и Сводку.
+          </p>
+        )}
+
+        {recordings !== null && recordings.length > 0 && (
+          <div className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
+            {recordings.map((recording) => (
+              <Link
+                key={recording.id}
+                href={`/recordings/${recording.id}`}
+                className="flex items-center justify-between gap-4 py-4 transition-colors hover:bg-black/[.02] dark:hover:bg-white/[.03]"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-black dark:text-zinc-50">{recording.original_filename}</p>
+                  <p className="text-sm text-zinc-500">
+                    {formatDate(recording.created_at)} · {modeLabel(recording.mode)}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-sm text-zinc-700 dark:text-zinc-300">{statusLabel(recording.status)}</p>
+                  <p className="text-xs text-zinc-400">{recording.progress_percent}%</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {sharedRecordings !== null && sharedRecordings.length > 0 && (
+        <div className="flex flex-col gap-6">
+          <h2 className="text-xl font-semibold text-black dark:text-zinc-50">Доступно мне</h2>
+          <div className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
+            {sharedRecordings.map((recording) => (
+              <Link
+                key={recording.id}
+                href={`/recordings/${recording.id}`}
+                className="flex items-center justify-between gap-4 py-4 transition-colors hover:bg-black/[.02] dark:hover:bg-white/[.03]"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-black dark:text-zinc-50">{recording.original_filename}</p>
+                  <p className="text-sm text-zinc-500">
+                    {recording.owner_email} · {formatDate(recording.created_at)} · {modeLabel(recording.mode)}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-sm text-zinc-700 dark:text-zinc-300">{statusLabel(recording.status)}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
         </div>
       )}
     </main>

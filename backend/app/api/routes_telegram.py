@@ -34,6 +34,13 @@ def create_link_code(db: Session = Depends(get_db), user: User = Depends(get_act
     return LinkCodeResponse(code=code, bot_username=settings.telegram_bot_username, expires_at=expires_at)
 
 
+@router.post("/telegram/unlink", status_code=204)
+def unlink_telegram(db: Session = Depends(get_db), user: User = Depends(get_active_user)) -> None:
+    user.telegram_chat_id = None
+    db.query(TelegramLinkCode).filter_by(user_id=user.id).delete()
+    db.commit()
+
+
 def _reply(chat_id: int, text: str) -> None:
     try:
         send_telegram_text(str(chat_id), text)

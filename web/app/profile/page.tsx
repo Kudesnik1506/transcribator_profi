@@ -1,9 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { AuthGuard } from "@/components/AuthGuard";
-import { createTelegramLinkCode, getMe, type CurrentUser, type TelegramLinkCode } from "@/lib/api";
+import {
+  createTelegramLinkCode,
+  deleteAccount,
+  getMe,
+  unlinkTelegram,
+  type CurrentUser,
+  type TelegramLinkCode,
+} from "@/lib/api";
+import { clearToken } from "@/lib/auth";
 
 export default function ProfilePage() {
   return (
@@ -14,10 +23,15 @@ export default function ProfilePage() {
 }
 
 function ProfilePageContent() {
+  const router = useRouter();
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [linkCode, setLinkCode] = useState<TelegramLinkCode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [unlinking, setUnlinking] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     getMe()
@@ -40,6 +54,36 @@ function ProfilePageContent() {
     }
   }
 
+  async function handleUnlink() {
+    setUnlinking(true);
+    setError(null);
+    try {
+      await unlinkTelegram();
+      setLinkCode(null);
+      setUser((prev) => (prev ? { ...prev, telegram_linked: false } : prev));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось отвязать Telegram");
+    } finally {
+      setUnlinking(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (!confirm("Точно удалить аккаунт без возможности восстановления? Все записи будут удалены безвозвратно.")) {
+      return;
+    }
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteAccount();
+      clearToken();
+      router.push("/login");
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Не удалось удалить аккаунт");
+      setDeleting(false);
+    }
+  }
+
   const deepLink = linkCode?.bot_username ? `https://t.me/${linkCode.bot_username}?start=${linkCode.code}` : null;
 
   return (
@@ -52,9 +96,18 @@ function ProfilePageContent() {
         <h2 className="font-medium text-black dark:text-zinc-50">Telegram-уведомления</h2>
 
         {user?.telegram_linked ? (
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            Telegram привязан — уведомления о готовых Записях будут приходить сюда и на почту.
-          </p>
+          <>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Telegram привязан — уведомления о готовых Записях будут приходить сюда и на почту.
+            </p>
+            <button
+              onClick={handleUnlink}
+              disabled={unlinking}
+              className="w-fit rounded-full border border-solid border-black/[.08] px-4 py-1.5 text-sm transition-colors hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:hover:bg-[#1a1a1a]"
+            >
+              {unlinking ? "Отвязываем…" : "Отвязать"}
+            </button>
+          </>
         ) : (
           <>
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
@@ -88,6 +141,29 @@ function ProfilePageContent() {
         )}
 
         {error && <p className="text-sm text-red-600">{error}</p>}
+      </section>
+
+      <section className="flex flex-col gap-3 rounded-2xl border border-solid border-red-600/30 p-6">
+        <h2 className="font-medium text-black dark:text-zinc-50">Удалить аккаунт</h2>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          Аккаунт и все ваши записи (транскрипты, сводки, диалоги) будут удалены безвозвратно.
+        </p>
+        <label className="flex w-fit items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+          <input
+            type="checkbox"
+            checked={confirmDelete}
+            onChange={(event) => setConfirmDelete(event.target.checked)}
+          />
+          Я понимаю, что все мои записи будут безвозвратно удалены
+        </label>
+        <button
+          onClick={handleDeleteAccount}
+          disabled={!confirmDelete || deleting}
+          className="w-fit rounded-full border border-solid border-red-600/30 px-4 py-1.5 text-sm text-red-600 transition-colors hover:bg-red-600/10 disabled:opacity-50"
+        >
+          {deleting ? "Удаляем…" : "Удалить аккаунт"}
+        </button>
+        {deleteError && <p className="text-sm text-red-600">{deleteError}</p>}
       </section>
     </main>
   );

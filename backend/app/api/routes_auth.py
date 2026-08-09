@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.auth import create_access_token, hash_password, verify_password
 from app.db import get_db
-from app.models import User
+from app.models import Recording, RecordingShare, TelegramLinkCode, User
+from app.recording_deletion import purge_recording
 
 router = APIRouter()
 
@@ -87,3 +88,15 @@ def me(user: User = Depends(get_current_user)) -> MeResponse:
         status=user.status,
         telegram_linked=user.telegram_chat_id is not None,
     )
+
+
+@router.delete("/auth/me", status_code=204)
+def delete_me(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> None:
+    recordings = db.query(Recording).filter_by(user_id=user.id).all()
+    for recording in recordings:
+        purge_recording(db, recording)
+
+    db.query(RecordingShare).filter_by(shared_with_user_id=user.id).delete()
+    db.query(TelegramLinkCode).filter_by(user_id=user.id).delete()
+    db.delete(user)
+    db.commit()

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import ForeignKey, JSON, String, Text
+from sqlalchemy import ForeignKey, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -109,6 +109,16 @@ class TelegramLinkCode(Base):
     code: Mapped[str] = mapped_column(String, unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(default=_now)
     expires_at: Mapped[datetime] = mapped_column()
+
+
+class RecordingShare(Base):
+    __tablename__ = "recording_shares"
+    __table_args__ = (UniqueConstraint("recording_id", "shared_with_user_id"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    recording_id: Mapped[str] = mapped_column(ForeignKey("recordings.id"))
+    shared_with_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(default=_now)
 
 
 class Summary(Base):

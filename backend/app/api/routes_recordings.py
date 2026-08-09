@@ -10,7 +10,7 @@ from app.api.deps import get_active_user
 from app.config import settings
 from app.db import SessionLocal, get_db
 from app.export import build_docx, build_srt, build_txt, content_disposition, export_filename
-from app.models import Message, Recording, Segment, User
+from app.models import Message, Recording, RecordingShare, Segment, User
 from app.quota import enforce_daily_quota
 from app.queue import get_queue
 from app.s3 import presign_get_url
@@ -38,6 +38,19 @@ def _get_owned_recording(db: Session, recording_id: str, user: User) -> Recordin
     # error log) — everyone else only their own.
     recording = db.get(Recording, recording_id)
     if recording is None or (recording.user_id != user.id and user.role != "admin"):
+        raise HTTPException(status_code=404, detail="recording not found")
+    return recording
+
+
+def _get_accessible_recording(db: Session, recording_id: str, user: User) -> Recording:
+    # Read-only access: owner, admin, or someone the owner shared it with.
+    recording = db.get(Recording, recording_id)
+    if recording is None:
+        raise HTTPException(status_code=404, detail="recording not found")
+    if recording.user_id == user.id or user.role == "admin":
+        return recording
+    shared = db.query(RecordingShare).filter_by(recording_id=recording.id, shared_with_user_id=user.id).first()
+    if shared is None:
         raise HTTPException(status_code=404, detail="recording not found")
     return recording
 
@@ -77,6 +90,8 @@ class RecordingDetailResponse(BaseModel):
     error_message: str | None
     segments: list[SegmentResponse]
     summary: SummaryResponse | None
+    is_owner: bool
+    owner_email: str | None
 
 
 class RecordingListItemResponse(BaseModel):
@@ -86,6 +101,17 @@ class RecordingListItemResponse(BaseModel):
     mode: str
     progress_percent: int
     created_at: datetime
+    owner_email: str | None = None
+
+
+class ShareResponse(BaseModel):
+    id: str
+    email: str
+    created_at: datetime
+
+
+class CreateShareRequest(BaseModel):
+    email: str
 
 
 class MessageResponse(BaseModel):
@@ -131,6 +157,32 @@ def list_recordings(
     ]
 
 
+@router.get("/recordings/shared-with-me", response_model=list[RecordingListItemResponse])
+def list_shared_recordings(
+    db: Session = Depends(get_db), user: User = Depends(get_active_user)
+) -> list[RecordingListItemResponse]:
+    recordings = (
+        db.query(Recording, User.email)
+        .join(RecordingShare, RecordingShare.recording_id == Recording.id)
+        .join(User, User.id == Recording.user_id)
+        .filter(RecordingShare.shared_with_user_id == user.id)
+        .order_by(Recording.created_at.desc())
+        .all()
+    )
+    return [
+        RecordingListItemResponse(
+            id=r.id,
+            original_filename=r.original_filename,
+            status=r.status,
+            mode=r.mode,
+            progress_percent=r.progress_percent,
+            created_at=r.created_at,
+            owner_email=owner_email,
+        )
+        for r, owner_email in recordings
+    ]
+
+
 @router.post("/recordings", response_model=RecordingResponse, status_code=201)
 async def create_recording(
     payload: CreateRecordingRequest,
@@ -161,9 +213,10 @@ async def create_recording(
 def get_recording(
     recording_id: str, db: Session = Depends(get_db), user: User = Depends(get_active_user)
 ) -> RecordingDetailResponse:
-    recording = _get_owned_recording(db, recording_id, user)
+    recording = _get_accessible_recording(db, recording_id, user)
 
     segments = sorted(recording.segments, key=lambda s: s.start_ms)
+    owner = db.get(User, recording.user_id) if recording.user_id else None
     return RecordingDetailResponse(
         id=recording.id,
         status=recording.status,
@@ -176,6 +229,8 @@ def get_recording(
         error_message=recording.error_message,
         segments=[SegmentResponse(id=s.id, start_ms=s.start_ms, end_ms=s.end_ms, text=s.text) for s in segments],
         summary=SummaryResponse(items=recording.summary.items) if recording.summary else None,
+        is_owner=recording.user_id == user.id,
+        owner_email=owner.email if owner else None,
     )
 
 
@@ -183,7 +238,7 @@ def get_recording(
 def search_recording(
     recording_id: str, q: str, db: Session = Depends(get_db), user: User = Depends(get_active_user)
 ) -> SearchResponse:
-    _get_owned_recording(db, recording_id, user)
+    _get_accessible_recording(db, recording_id, user)
 
     if not q.strip():
         return SearchResponse(query=q, total=0, matches=[])
@@ -206,7 +261,7 @@ def export_recording(
     if fmt not in EXPORT_CONTENT_TYPES:
         raise HTTPException(status_code=404, detail="unknown export format")
 
-    recording = _get_owned_recording(db, recording_id, user)
+    recording = _get_accessible_recording(db, recording_id, user)
 
     segments = sorted(recording.segments, key=lambda s: s.start_ms)
     if not segments:
@@ -242,7 +297,7 @@ async def retry_recording(
 def list_messages(
     recording_id: str, db: Session = Depends(get_db), user: User = Depends(get_active_user)
 ) -> list[MessageResponse]:
-    _get_owned_recording(db, recording_id, user)
+    _get_accessible_recording(db, recording_id, user)
 
     messages = (
         db.query(Message).filter_by(recording_id=recording_id).order_by(Message.created_at).all()
@@ -304,3 +359,62 @@ def ask_question(
                 save_db.close()
 
     return StreamingResponse(stream_and_save_answer(), media_type="text/plain")
+
+
+@router.post("/recordings/{recording_id}/shares", response_model=ShareResponse, status_code=201)
+def create_share(
+    recording_id: str,
+    payload: CreateShareRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_active_user),
+) -> ShareResponse:
+    recording = _get_owned_recording(db, recording_id, user)
+
+    recipient = db.query(User).filter_by(email=payload.email).first()
+    if recipient is None:
+        raise HTTPException(status_code=404, detail="пользователь не найден")
+    if recipient.id == user.id:
+        raise HTTPException(status_code=400, detail="нельзя поделиться записью с самим собой")
+
+    share = (
+        db.query(RecordingShare)
+        .filter_by(recording_id=recording.id, shared_with_user_id=recipient.id)
+        .first()
+    )
+    if share is None:
+        share = RecordingShare(recording_id=recording.id, shared_with_user_id=recipient.id)
+        db.add(share)
+        db.commit()
+        db.refresh(share)
+
+    return ShareResponse(id=share.id, email=recipient.email, created_at=share.created_at)
+
+
+@router.get("/recordings/{recording_id}/shares", response_model=list[ShareResponse])
+def list_shares(
+    recording_id: str, db: Session = Depends(get_db), user: User = Depends(get_active_user)
+) -> list[ShareResponse]:
+    recording = _get_owned_recording(db, recording_id, user)
+
+    shares = (
+        db.query(RecordingShare, User.email)
+        .join(User, User.id == RecordingShare.shared_with_user_id)
+        .filter(RecordingShare.recording_id == recording.id)
+        .order_by(RecordingShare.created_at.desc())
+        .all()
+    )
+    return [ShareResponse(id=share.id, email=email, created_at=share.created_at) for share, email in shares]
+
+
+@router.delete("/recordings/{recording_id}/shares/{share_id}", status_code=204)
+def revoke_share(
+    recording_id: str, share_id: str, db: Session = Depends(get_db), user: User = Depends(get_active_user)
+) -> None:
+    recording = _get_owned_recording(db, recording_id, user)
+
+    share = db.query(RecordingShare).filter_by(id=share_id, recording_id=recording.id).first()
+    if share is None:
+        raise HTTPException(status_code=404, detail="share not found")
+
+    db.delete(share)
+    db.commit()

@@ -30,7 +30,7 @@ function TypingIndicator() {
   );
 }
 
-export function Dialog({ recordingId }: { recordingId: string }) {
+export function Dialog({ recordingId, readOnly = false }: { recordingId: string; readOnly?: boolean }) {
   const [messages, setMessages] = useState<DialogMessage[]>([]);
   const [question, setQuestion] = useState("");
   const [streamingAnswer, setStreamingAnswer] = useState<string | null>(null);
@@ -96,6 +96,7 @@ export function Dialog({ recordingId }: { recordingId: string }) {
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
 
+      {!readOnly && (
       <div className="mt-4 flex gap-2">
         <input
           value={question}
@@ -122,6 +123,7 @@ export function Dialog({ recordingId }: { recordingId: string }) {
           )}
         </button>
       </div>
+      )}
     </section>
   );
 }

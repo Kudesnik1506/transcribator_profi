@@ -154,6 +154,25 @@ def test_webhook_allows_any_caller_when_secret_not_configured(client, db_session
     assert response.status_code == 200
 
 
+def test_unlink_clears_chat_id_and_pending_codes(client, db_session, auth_headers, active_user):
+    active_user.telegram_chat_id = "555"
+    db_session.add(TelegramLinkCode(user_id=active_user.id, code="abc123", expires_at=datetime.now(timezone.utc)))
+    db_session.commit()
+
+    response = client.post("/telegram/unlink", headers=auth_headers)
+
+    assert response.status_code == 204
+    db_session.refresh(active_user)
+    assert active_user.telegram_chat_id is None
+    assert db_session.query(TelegramLinkCode).filter_by(user_id=active_user.id).first() is None
+
+
+def test_unlink_requires_auth(client):
+    response = client.post("/telegram/unlink")
+
+    assert response.status_code == 401
+
+
 def test_webhook_survives_telegram_reply_failure(client, db_session, active_user, monkeypatch):
     from app.worker.notify import TelegramDeliveryError
 

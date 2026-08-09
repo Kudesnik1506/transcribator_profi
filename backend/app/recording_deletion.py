@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from app.models import ErrorLog, Message, Recording
+from app.models import ErrorLog, Message, Recording, RecordingShare
 from app.s3 import delete_media
 
 
@@ -12,5 +12,6 @@ def purge_recording(db: Session, recording: Recording) -> None:
 
     db.query(Message).filter_by(recording_id=recording.id).delete()
     db.query(ErrorLog).filter_by(recording_id=recording.id).delete()
+    db.query(RecordingShare).filter_by(recording_id=recording.id).delete()
     db.delete(recording)
     db.commit()

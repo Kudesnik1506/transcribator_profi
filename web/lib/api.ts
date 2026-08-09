@@ -25,6 +25,8 @@ export type RecordingDetail = {
   error_message: string | null;
   segments: RecordingSegment[];
   summary: RecordingSummary | null;
+  is_owner: boolean;
+  owner_email: string | null;
 };
 
 export type RecordingListItem = {
@@ -34,6 +36,7 @@ export type RecordingListItem = {
   mode: string;
   progress_percent: number;
   created_at: string;
+  owner_email?: string | null;
 };
 
 export type CreateMultipartUploadResponse = {
@@ -239,6 +242,28 @@ export function listRecordings(): Promise<RecordingListItem[]> {
   return apiFetch<RecordingListItem[]>("/recordings", "list recordings");
 }
 
+export function listSharedRecordings(): Promise<RecordingListItem[]> {
+  return apiFetch<RecordingListItem[]>("/recordings/shared-with-me", "list shared recordings");
+}
+
+export type RecordingShare = {
+  id: string;
+  email: string;
+  created_at: string;
+};
+
+export function shareRecording(recordingId: string, email: string): Promise<RecordingShare> {
+  return postJson(`/recordings/${recordingId}/shares`, "share recording", { email });
+}
+
+export function listShares(recordingId: string): Promise<RecordingShare[]> {
+  return apiFetch<RecordingShare[]>(`/recordings/${recordingId}/shares`, "list shares");
+}
+
+export function revokeShare(recordingId: string, shareId: string): Promise<void> {
+  return apiFetch<void>(`/recordings/${recordingId}/shares/${shareId}`, "revoke share", { method: "DELETE" });
+}
+
 export function retryRecording(id: string): Promise<{ id: string; status: string }> {
   return apiFetch(`/recordings/${id}/retry`, "retry recording", { method: "POST" });
 }
@@ -330,6 +355,14 @@ export type TelegramLinkCode = {
 
 export function createTelegramLinkCode(): Promise<TelegramLinkCode> {
   return apiFetch<TelegramLinkCode>("/telegram/link-code", "create telegram link code", { method: "POST" });
+}
+
+export function unlinkTelegram(): Promise<void> {
+  return apiFetch<void>("/telegram/unlink", "unlink telegram", { method: "POST" });
+}
+
+export function deleteAccount(): Promise<void> {
+  return apiFetch<void>("/auth/me", "delete account", { method: "DELETE" });
 }
 
 export type AdminUser = {
