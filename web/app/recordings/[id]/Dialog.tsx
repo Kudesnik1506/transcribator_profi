@@ -4,6 +4,16 @@ import { useEffect, useState } from "react";
 
 import { askQuestion, getMessages, type DialogMessage } from "@/lib/api";
 
+function TypingIndicator() {
+  return (
+    <span className="flex items-center gap-1 py-0.5" aria-label="Печатает ответ…">
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400 [animation-delay:-0.3s]" />
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400 [animation-delay:-0.15s]" />
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400" />
+    </span>
+  );
+}
+
 export function Dialog({ recordingId }: { recordingId: string }) {
   const [messages, setMessages] = useState<DialogMessage[]>([]);
   const [question, setQuestion] = useState("");
@@ -66,7 +76,7 @@ export function Dialog({ recordingId }: { recordingId: string }) {
         {streamingAnswer !== null && (
           <div className="max-w-[80%]">
             <p className="rounded-2xl bg-zinc-100 px-4 py-2 text-sm text-black dark:bg-zinc-800 dark:text-zinc-50">
-              {streamingAnswer || "…"}
+              {streamingAnswer || <TypingIndicator />}
             </p>
           </div>
         )}
@@ -88,9 +98,16 @@ export function Dialog({ recordingId }: { recordingId: string }) {
         <button
           onClick={handleAsk}
           disabled={sending || !question.trim()}
-          className="rounded-full bg-foreground px-5 py-2 text-sm text-background transition-colors hover:bg-[#383838] disabled:opacity-50 dark:hover:bg-[#ccc]"
+          className="flex items-center justify-center rounded-full bg-foreground px-5 py-2 text-sm text-background transition-colors hover:bg-[#383838] disabled:opacity-50 dark:hover:bg-[#ccc]"
         >
-          {sending ? "…" : "Спросить"}
+          {sending ? (
+            <span
+              className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-background/40 border-t-background"
+              aria-label="Отправляем…"
+            />
+          ) : (
+            "Спросить"
+          )}
         </button>
       </div>
     </section>
