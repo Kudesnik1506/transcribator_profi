@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     admin_email: str = ""
     admin_password: str = ""
 
+    # Lets POST /auth/emergency-reset reset anyone's password (including the
+    # last remaining Administrator) via a static secret instead of a login —
+    # the account-recovery path for when no one can sign in at all. Empty
+    # means "not configured": the endpoint always 404s.
+    emergency_reset_token: str = ""
+
     # "fast" (~30 min, full price) or "deferred" (up to 24h, ~4x cheaper).
     # The frontend reads this via GET /config so changing it here changes
     # the pre-selected radio too — no frontend code change needed (D15).

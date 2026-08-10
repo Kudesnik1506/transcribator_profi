@@ -87,6 +87,56 @@ def test_admin_cannot_block_themselves(client, db_session, admin_auth_headers, a
     assert admin_user.status == "active"
 
 
+def test_admin_reset_password_lets_user_login_with_new_password(client, db_session, admin_auth_headers, active_user):
+    response = client.post(
+        f"/admin/users/{active_user.id}/reset-password",
+        headers=admin_auth_headers,
+        json={"new_password": "brandnewpassword"},
+    )
+
+    assert response.status_code == 204
+    login = client.post("/auth/login", json={"email": active_user.email, "password": "brandnewpassword"})
+    assert login.status_code == 200
+
+
+def test_admin_reset_password_rejects_short_password(client, admin_auth_headers, active_user):
+    response = client.post(
+        f"/admin/users/{active_user.id}/reset-password",
+        headers=admin_auth_headers,
+        json={"new_password": "short"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_admin_reset_password_404_when_missing(client, admin_auth_headers):
+    response = client.post(
+        "/admin/users/does-not-exist/reset-password", headers=admin_auth_headers, json={"new_password": "newpassword456"}
+    )
+
+    assert response.status_code == 404
+
+
+def test_admin_reset_password_rejects_regular_user(client, auth_headers, active_user):
+    response = client.post(
+        f"/admin/users/{active_user.id}/reset-password", headers=auth_headers, json={"new_password": "newpassword456"}
+    )
+
+    assert response.status_code == 403
+
+
+def test_admin_reset_password_leaves_activity_log(client, db_session, admin_auth_headers, admin_user, active_user):
+    client.post(
+        f"/admin/users/{active_user.id}/reset-password",
+        headers=admin_auth_headers,
+        json={"new_password": "brandnewpassword"},
+    )
+
+    log = db_session.query(ActivityLog).filter_by(user_id=admin_user.id, action="admin_reset_password").first()
+    assert log is not None
+    assert log.context == {"target_user_id": active_user.id}
+
+
 def test_approve_user_404_when_missing(client, admin_auth_headers):
     response = client.post("/admin/users/does-not-exist/approve", headers=admin_auth_headers)
 

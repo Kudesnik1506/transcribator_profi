@@ -397,6 +397,14 @@ export function deleteAccount(): Promise<void> {
   return apiFetch<void>("/auth/me", "delete account", { method: "DELETE" });
 }
 
+export function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  return apiFetch<void>("/auth/me/password", "change password", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+}
+
 export type AdminUser = {
   id: string;
   email: string;
@@ -415,6 +423,10 @@ export function adminApproveUser(userId: string): Promise<AdminUser> {
 
 export function adminBlockUser(userId: string): Promise<AdminUser> {
   return apiFetch<AdminUser>(`/admin/users/${userId}/block`, "block user", { method: "POST" });
+}
+
+export function adminResetPassword(userId: string, newPassword: string): Promise<void> {
+  return postJson(`/admin/users/${userId}/reset-password`, "reset user password", { new_password: newPassword });
 }
 
 export type AdminRecording = {

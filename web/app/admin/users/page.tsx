@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { AuthGuard } from "@/components/AuthGuard";
-import { adminApproveUser, adminBlockUser, adminListUsers, type AdminUser } from "@/lib/api";
+import { adminApproveUser, adminBlockUser, adminListUsers, adminResetPassword, type AdminUser } from "@/lib/api";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "ожидает одобрения",
@@ -57,6 +57,20 @@ function AdminUsersPageContent() {
     }
   }
 
+  async function handleResetPassword(id: string) {
+    const newPassword = window.prompt("Новый пароль для пользователя (не короче 8 символов):");
+    if (!newPassword) return;
+    setBusyId(id);
+    setError(null);
+    try {
+      await adminResetPassword(id, newPassword);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось сбросить пароль");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-12">
       <div className="flex items-center justify-between">
@@ -80,6 +94,13 @@ function AdminUsersPageContent() {
                 </p>
               </div>
               <div className="flex shrink-0 gap-2">
+                <button
+                  onClick={() => handleResetPassword(user.id)}
+                  disabled={busyId === user.id}
+                  className="rounded-full border border-solid border-black/[.08] px-4 py-1.5 text-sm transition-colors hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:hover:bg-[#1a1a1a]"
+                >
+                  Сбросить пароль
+                </button>
                 {user.status !== "active" && (
                   <button
                     onClick={() => handleApprove(user.id)}

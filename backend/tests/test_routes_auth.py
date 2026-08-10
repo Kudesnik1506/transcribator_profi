@@ -221,3 +221,121 @@ def test_delete_me_anonymizes_prior_activity_logs_instead_of_deleting_them(
     logs = db_session.query(ActivityLog).filter_by(action="login").all()
     assert len(logs) == 1
     assert logs[0].user_id is None
+
+
+def test_change_password_updates_hash_and_allows_login_with_new_password(client, db_session, auth_headers, active_user):
+    response = client.patch(
+        "/auth/me/password",
+        headers=auth_headers,
+        json={"current_password": "password123", "new_password": "newpassword456"},
+    )
+
+    assert response.status_code == 204
+    login = client.post("/auth/login", json={"email": active_user.email, "password": "newpassword456"})
+    assert login.status_code == 200
+
+
+def test_change_password_rejects_wrong_current_password(client, auth_headers):
+    response = client.patch(
+        "/auth/me/password",
+        headers=auth_headers,
+        json={"current_password": "wrongpassword", "new_password": "newpassword456"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_change_password_rejects_short_new_password(client, auth_headers):
+    response = client.patch(
+        "/auth/me/password",
+        headers=auth_headers,
+        json={"current_password": "password123", "new_password": "short"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_change_password_requires_auth(client):
+    response = client.patch(
+        "/auth/me/password", json={"current_password": "password123", "new_password": "newpassword456"}
+    )
+
+    assert response.status_code == 401
+
+
+def test_change_password_leaves_activity_log(client, db_session, auth_headers, active_user):
+    client.patch(
+        "/auth/me/password",
+        headers=auth_headers,
+        json={"current_password": "password123", "new_password": "newpassword456"},
+    )
+
+    assert db_session.query(ActivityLog).filter_by(user_id=active_user.id, action="password_changed").count() == 1
+
+
+def test_emergency_reset_404_when_token_not_configured(client, active_user):
+    response = client.post(
+        "/auth/emergency-reset",
+        headers={"X-Reset-Token": "anything"},
+        json={"email": active_user.email, "new_password": "newpassword456"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_emergency_reset_404_when_token_wrong(client, active_user, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "emergency_reset_token", "correct-token")
+
+    response = client.post(
+        "/auth/emergency-reset",
+        headers={"X-Reset-Token": "wrong-token"},
+        json={"email": active_user.email, "new_password": "newpassword456"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_emergency_reset_404_when_email_unknown(client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "emergency_reset_token", "correct-token")
+
+    response = client.post(
+        "/auth/emergency-reset",
+        headers={"X-Reset-Token": "correct-token"},
+        json={"email": "nobody@example.com", "new_password": "newpassword456"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_emergency_reset_updates_password_with_correct_token(client, active_user, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "emergency_reset_token", "correct-token")
+
+    response = client.post(
+        "/auth/emergency-reset",
+        headers={"X-Reset-Token": "correct-token"},
+        json={"email": active_user.email, "new_password": "newpassword456"},
+    )
+
+    assert response.status_code == 204
+    login = client.post("/auth/login", json={"email": active_user.email, "password": "newpassword456"})
+    assert login.status_code == 200
+
+
+def test_emergency_reset_rejects_short_password(client, active_user, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "emergency_reset_token", "correct-token")
+
+    response = client.post(
+        "/auth/emergency-reset",
+        headers={"X-Reset-Token": "correct-token"},
+        json={"email": active_user.email, "new_password": "short"},
+    )
+
+    assert response.status_code == 422

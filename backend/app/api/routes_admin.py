@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.activity_log import log_activity
 from app.api.deps import get_admin_user
+from app.api.routes_auth import validate_password
+from app.auth import hash_password
 from app.db import get_db
 from app.models import ActivityLog, ErrorLog, Recording, Ticket, TicketEvent, TicketHypothesis, User
 from app.recording_deletion import purge_recording
@@ -72,6 +74,26 @@ def block_user(
     db.commit()
     log_activity(db, admin.id, "user_blocked", {"target_user_id": user_id}, request)
     return _user_response(user)
+
+
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str
+
+
+@router.post("/users/{user_id}/reset-password", status_code=204)
+def reset_user_password(
+    user_id: str,
+    payload: AdminResetPasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+) -> None:
+    user = _get_user_or_404(db, user_id)
+    validate_password(payload.new_password)
+
+    user.password_hash = hash_password(payload.new_password)
+    db.commit()
+    log_activity(db, admin.id, "admin_reset_password", {"target_user_id": user_id}, request)
 
 
 class AdminRecordingResponse(BaseModel):

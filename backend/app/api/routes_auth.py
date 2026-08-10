@@ -1,10 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+import secrets
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from app.activity_log import log_activity
 from app.api.deps import get_current_user
 from app.auth import create_access_token, hash_password, verify_password
+from app.config import settings
 from app.db import get_db
 from app.models import ActivityLog, Recording, RecordingShare, TelegramLinkCode, User
 from app.recording_deletion import purge_recording
@@ -15,6 +18,13 @@ MIN_PASSWORD_LENGTH = 8
 # bcrypt silently truncates input past 72 bytes — anything longer would let
 # two different passwords sharing a 72-byte prefix hash identically.
 MAX_PASSWORD_BYTES = 72
+
+
+def validate_password(password: str) -> None:
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(status_code=422, detail=f"пароль должен быть не короче {MIN_PASSWORD_LENGTH} символов")
+    if len(password.encode("utf-8")) > MAX_PASSWORD_BYTES:
+        raise HTTPException(status_code=422, detail="пароль слишком длинный")
 
 
 class RegisterRequest(BaseModel):
@@ -29,10 +39,7 @@ class RegisterResponse(BaseModel):
 
 @router.post("/auth/register", response_model=RegisterResponse, status_code=201)
 def register(payload: RegisterRequest, request: Request, db: Session = Depends(get_db)) -> RegisterResponse:
-    if len(payload.password) < MIN_PASSWORD_LENGTH:
-        raise HTTPException(status_code=422, detail=f"пароль должен быть не короче {MIN_PASSWORD_LENGTH} символов")
-    if len(payload.password.encode("utf-8")) > MAX_PASSWORD_BYTES:
-        raise HTTPException(status_code=422, detail="пароль слишком длинный")
+    validate_password(payload.password)
 
     existing = db.query(User).filter_by(email=payload.email).first()
     if existing:
@@ -110,3 +117,57 @@ def delete_me(request: Request, db: Session = Depends(get_db), user: User = Depe
     db.query(ActivityLog).filter_by(user_id=user.id).update({"user_id": None})
     db.delete(user)
     db.commit()
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.patch("/auth/me/password", status_code=204)
+def change_password(
+    payload: ChangePasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> None:
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=401, detail="неверный текущий пароль")
+    validate_password(payload.new_password)
+
+    user.password_hash = hash_password(payload.new_password)
+    db.commit()
+    log_activity(db, user.id, "password_changed", {}, request)
+
+
+class EmergencyResetRequest(BaseModel):
+    email: EmailStr
+    new_password: str
+
+
+# Account-recovery path for when no one can sign in — e.g. the only
+# Administrator forgot their password. Authenticated by a static secret
+# (EMERGENCY_RESET_TOKEN in .env) instead of a session, since a session is
+# exactly what's unavailable here. Same 404 whether the feature is off,
+# the token is wrong, or the email doesn't exist — an attacker probing this
+# endpoint shouldn't learn which case they hit.
+@router.post("/auth/emergency-reset", status_code=204)
+def emergency_reset_password(
+    payload: EmergencyResetRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    x_reset_token: str | None = Header(default=None),
+) -> None:
+    if not settings.emergency_reset_token or not x_reset_token:
+        raise HTTPException(status_code=404)
+    if not secrets.compare_digest(x_reset_token, settings.emergency_reset_token):
+        raise HTTPException(status_code=404)
+
+    user = db.query(User).filter_by(email=payload.email).first()
+    if user is None:
+        raise HTTPException(status_code=404)
+    validate_password(payload.new_password)
+
+    user.password_hash = hash_password(payload.new_password)
+    db.commit()
+    log_activity(db, user.id, "emergency_password_reset", {}, request)
