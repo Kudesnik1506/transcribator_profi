@@ -46,17 +46,6 @@ function TicketsPageContent() {
 
   useEffect(loadTickets, []);
 
-  useEffect(() => {
-    if (typeof document !== "undefined" && document.referrer) {
-      try {
-        const referrer = new URL(document.referrer);
-        if (referrer.origin === window.location.origin) setPageUrl(referrer.pathname);
-      } catch {
-        // document.referrer isn't a valid URL — leave the field empty
-      }
-    }
-  }, []);
-
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!description.trim()) return;
