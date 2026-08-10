@@ -28,8 +28,15 @@ function TicketsPageContent() {
   const [description, setDescription] = useState("");
   const [pageUrl, setPageUrl] = useState("");
   const [screenshot, setScreenshot] = useState<File | null>(null);
+  const [isDragActive, setIsDragActive] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function handleScreenshotFiles(fileList: FileList | null) {
+    const file = fileList?.[0];
+    if (file && !file.type.startsWith("image/")) return;
+    setScreenshot(file ?? null);
+  }
 
   function loadTickets() {
     listMyTickets()
@@ -81,7 +88,14 @@ function TicketsPageContent() {
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-10 px-6 py-12">
       <section className="flex flex-col gap-4 rounded-2xl border border-solid border-black/[.08] p-6 dark:border-white/[.145]">
-        <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Сообщить об ошибке</h1>
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Сообщить об ошибке</h1>
+          <p className="text-sm text-zinc-500">
+            Эта вкладка — не просто почта в один конец. Заявку разбирают автоматически: проверяют несколько
+            независимых версий причины (а не одну догадку), подтверждённую версию исправляют и выкатывают. Статус
+            каждого шага и итоговое решение видны в списке тикетов ниже.
+          </p>
+        </div>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <textarea
             required
@@ -98,16 +112,44 @@ function TicketsPageContent() {
             onChange={(event) => setPageUrl(event.target.value)}
             className="rounded-lg border border-solid border-black/[.08] px-4 py-2 text-sm dark:border-white/[.145] dark:bg-zinc-900"
           />
-          <label className="flex flex-col gap-1 text-sm text-zinc-600 dark:text-zinc-400">
-            Скриншот (необязательно)
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={(event) => {
+              event.preventDefault();
+              setIsDragActive(true);
+            }}
+            onDragLeave={() => setIsDragActive(false)}
+            onDrop={(event) => {
+              event.preventDefault();
+              setIsDragActive(false);
+              handleScreenshotFiles(event.dataTransfer.files);
+            }}
+            className={[
+              "flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed p-4 text-center transition-colors",
+              isDragActive
+                ? "border-foreground bg-black/[.04] dark:bg-white/[.06]"
+                : "border-black/[.15] dark:border-white/[.2]",
+            ].join(" ")}
+          >
+            {screenshot ? (
+              <>
+                <p className="text-sm font-medium text-black dark:text-zinc-50">{screenshot.name}</p>
+                <p className="text-xs text-zinc-500">нажмите или перетащите другой файл, чтобы заменить</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-black dark:text-zinc-50">Нажмите или перетащите скриншот сюда</p>
+                <p className="text-xs text-zinc-500">Необязательно, изображение</p>
+              </>
+            )}
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              onChange={(event) => setScreenshot(event.target.files?.[0] ?? null)}
-              className="text-sm"
+              onChange={(event) => handleScreenshotFiles(event.target.files)}
+              className="hidden"
             />
-          </label>
+          </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <button
             type="submit"
