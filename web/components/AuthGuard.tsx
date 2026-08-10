@@ -5,7 +5,10 @@ import { useEffect, useState } from "react";
 
 import { getMe, type CurrentUser } from "@/lib/api";
 import { clearToken, loadToken } from "@/lib/auth";
+import { hasSeenOnboarding, markOnboardingSeen } from "@/lib/onboarding";
+import { getOnboardingSteps } from "@/lib/onboardingSteps";
 import { AppHeader } from "@/components/AppHeader";
+import { OnboardingTour } from "@/components/OnboardingTour";
 
 export function AuthGuard({
   children,
@@ -17,6 +20,7 @@ export function AuthGuard({
   const router = useRouter();
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tourOpen, setTourOpen] = useState(false);
 
   useEffect(() => {
     if (!loadToken()) {
@@ -27,6 +31,7 @@ export function AuthGuard({
       .then((data) => {
         setUser(data);
         setLoading(false);
+        if (data.status === "active" && !hasSeenOnboarding(data.id)) setTourOpen(true);
       })
       .catch(() => {
         clearToken();
@@ -40,7 +45,16 @@ export function AuthGuard({
 
   return (
     <>
-      <AppHeader user={user} />
+      <AppHeader user={user} onOpenTour={() => setTourOpen(true)} />
+      {tourOpen && (
+        <OnboardingTour
+          steps={getOnboardingSteps(user.role)}
+          onFinish={() => {
+            markOnboardingSeen(user.id);
+            setTourOpen(false);
+          }}
+        />
+      )}
       {user.status === "pending" ? (
         <main className="mx-auto flex max-w-md flex-col items-center gap-3 px-6 py-24 text-center">
           <h1 className="text-xl font-semibold text-black dark:text-zinc-50">Ожидает одобрения</h1>

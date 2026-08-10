@@ -34,7 +34,7 @@ function navLinkClassName(active: boolean): string {
   ].join(" ");
 }
 
-export function AppHeader({ user }: { user: CurrentUser }) {
+export function AppHeader({ user, onOpenTour }: { user: CurrentUser; onOpenTour?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -64,6 +64,16 @@ export function AppHeader({ user }: { user: CurrentUser }) {
 
         <div className="hidden items-center gap-4 md:flex">
           <span className="text-sm text-zinc-500">{user.email}</span>
+          {onOpenTour && (
+            <button
+              onClick={onOpenTour}
+              aria-label="Показать обучение"
+              title="Показать обучение"
+              className="flex h-6 w-6 items-center justify-center rounded-full border border-solid border-black/[.15] text-xs text-zinc-500 transition-colors hover:bg-black/[.04] dark:border-white/[.2] dark:hover:bg-white/[.06]"
+            >
+              ?
+            </button>
+          )}
           <button
             onClick={handleLogout}
             className="text-sm text-zinc-500 underline hover:text-black dark:hover:text-zinc-50"
@@ -107,9 +117,22 @@ export function AppHeader({ user }: { user: CurrentUser }) {
           ))}
           <div className="mt-2 flex items-center justify-between border-t border-solid border-black/[.08] px-3 pt-3 dark:border-white/[.145]">
             <span className="text-sm text-zinc-500">{user.email}</span>
-            <button onClick={handleLogout} className="text-sm text-zinc-500 underline">
-              Выйти
-            </button>
+            <div className="flex items-center gap-3">
+              {onOpenTour && (
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenTour();
+                  }}
+                  className="text-sm text-zinc-500 underline"
+                >
+                  Обучение
+                </button>
+              )}
+              <button onClick={handleLogout} className="text-sm text-zinc-500 underline">
+                Выйти
+              </button>
+            </div>
           </div>
         </nav>
       )}
