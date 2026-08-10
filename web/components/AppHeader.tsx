@@ -55,7 +55,12 @@ export function AppHeader({ user, onOpenTour }: { user: CurrentUser; onOpenTour?
           </Link>
           <nav className="hidden items-center gap-5 lg:flex">
             {navItems.map((item) => (
-              <Link key={item.href} href={item.href} className={navLinkClassName(isActive(pathname, item))}>
+              <Link
+                key={item.href}
+                href={item.href}
+                data-tour-nav={item.href}
+                className={navLinkClassName(isActive(pathname, item))}
+              >
                 {item.label}
               </Link>
             ))}
