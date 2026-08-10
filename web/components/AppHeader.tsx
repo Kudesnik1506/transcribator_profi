@@ -27,7 +27,7 @@ function isActive(pathname: string, item: NavItem): boolean {
 
 function navLinkClassName(active: boolean): string {
   return [
-    "border-b-2 px-1 py-1 text-sm font-medium transition-colors",
+    "whitespace-nowrap border-b-2 px-1 py-1 text-sm font-medium transition-colors",
     active
       ? "border-foreground text-black dark:text-zinc-50"
       : "border-transparent text-zinc-500 hover:text-black dark:hover:text-zinc-50",
@@ -48,12 +48,12 @@ export function AppHeader({ user, onOpenTour }: { user: CurrentUser; onOpenTour?
 
   return (
     <header className="border-b border-solid border-black/[.08] px-6 dark:border-white/[.145]">
-      <div className="mx-auto flex h-14 max-w-4xl items-center justify-between">
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4">
         <div className="flex items-center gap-6">
-          <Link href="/" className="font-semibold text-black dark:text-zinc-50">
+          <Link href="/" className="shrink-0 font-semibold text-black dark:text-zinc-50">
             Транскрибатор
           </Link>
-          <nav className="hidden items-center gap-5 md:flex">
+          <nav className="hidden items-center gap-5 lg:flex">
             {navItems.map((item) => (
               <Link key={item.href} href={item.href} className={navLinkClassName(isActive(pathname, item))}>
                 {item.label}
@@ -62,21 +62,23 @@ export function AppHeader({ user, onOpenTour }: { user: CurrentUser; onOpenTour?
           </nav>
         </div>
 
-        <div className="hidden items-center gap-4 md:flex">
-          <span className="text-sm text-zinc-500">{user.email}</span>
+        <div className="hidden shrink-0 items-center gap-4 lg:flex">
+          <span className="max-w-[220px] truncate text-sm text-zinc-500" title={user.email}>
+            {user.email}
+          </span>
           {onOpenTour && (
             <button
               onClick={onOpenTour}
               aria-label="Показать обучение"
               title="Показать обучение"
-              className="flex h-6 w-6 items-center justify-center rounded-full border border-solid border-black/[.15] text-xs text-zinc-500 transition-colors hover:bg-black/[.04] dark:border-white/[.2] dark:hover:bg-white/[.06]"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-solid border-black/[.15] text-xs text-zinc-500 transition-colors hover:bg-black/[.04] dark:border-white/[.2] dark:hover:bg-white/[.06]"
             >
               ?
             </button>
           )}
           <button
             onClick={handleLogout}
-            className="text-sm text-zinc-500 underline hover:text-black dark:hover:text-zinc-50"
+            className="shrink-0 text-sm text-zinc-500 underline hover:text-black dark:hover:text-zinc-50"
           >
             Выйти
           </button>
@@ -86,7 +88,7 @@ export function AppHeader({ user, onOpenTour }: { user: CurrentUser; onOpenTour?
           onClick={() => setMenuOpen((open) => !open)}
           aria-label={menuOpen ? "Закрыть меню" : "Открыть меню"}
           aria-expanded={menuOpen}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 hover:bg-black/[.04] md:hidden dark:hover:bg-white/[.06]"
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 hover:bg-black/[.04] lg:hidden dark:hover:bg-white/[.06]"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className="h-5 w-5">
             {menuOpen ? (
@@ -99,7 +101,7 @@ export function AppHeader({ user, onOpenTour }: { user: CurrentUser; onOpenTour?
       </div>
 
       {menuOpen && (
-        <nav className="flex flex-col gap-1 border-t border-solid border-black/[.08] py-3 md:hidden dark:border-white/[.145]">
+        <nav className="flex flex-col gap-1 border-t border-solid border-black/[.08] py-3 lg:hidden dark:border-white/[.145]">
           {navItems.map((item) => (
             <Link
               key={item.href}
@@ -115,9 +117,11 @@ export function AppHeader({ user, onOpenTour }: { user: CurrentUser; onOpenTour?
               {item.label}
             </Link>
           ))}
-          <div className="mt-2 flex items-center justify-between border-t border-solid border-black/[.08] px-3 pt-3 dark:border-white/[.145]">
-            <span className="text-sm text-zinc-500">{user.email}</span>
-            <div className="flex items-center gap-3">
+          <div className="mt-2 flex items-center justify-between gap-3 border-t border-solid border-black/[.08] px-3 pt-3 dark:border-white/[.145]">
+            <span className="min-w-0 truncate text-sm text-zinc-500" title={user.email}>
+              {user.email}
+            </span>
+            <div className="flex shrink-0 items-center gap-3">
               {onOpenTour && (
                 <button
                   onClick={() => {

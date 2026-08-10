@@ -209,7 +209,7 @@ function AdminTicketPageContent({ params }: { params: Promise<{ id: string }> })
         <div className="flex flex-col gap-3">
           {ticket.events.map((event) => (
             <div key={event.id} className="rounded-lg border border-solid border-black/[.08] p-4 text-sm dark:border-white/[.145]">
-              <div className="flex items-center justify-between text-zinc-500">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-zinc-500">
                 <span className="font-medium text-black dark:text-zinc-50">{statusLabel(event.status)}</span>
                 <span>
                   {formatDate(event.created_at)} · {event.author === "agent" ? "агент" : "пользователь"}

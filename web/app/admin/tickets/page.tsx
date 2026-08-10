@@ -31,9 +31,9 @@ function AdminTicketsPageContent() {
 
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-6 px-6 py-12">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">Тикеты поддержки</h1>
-        <Link href="/admin" className="text-sm text-zinc-500 underline">
+        <Link href="/admin" className="shrink-0 text-sm text-zinc-500 underline">
           Назад в админку
         </Link>
       </div>
