@@ -417,6 +417,12 @@ export function adminListUsers(): Promise<AdminUser[]> {
   return apiFetch<AdminUser[]>("/admin/users", "list users");
 }
 
+export type AdminCreateUserResult = AdminUser & { generated_password: string };
+
+export function adminCreateUser(email: string): Promise<AdminCreateUserResult> {
+  return postJson("/admin/users", "create user", { email });
+}
+
 export function adminApproveUser(userId: string): Promise<AdminUser> {
   return apiFetch<AdminUser>(`/admin/users/${userId}/approve`, "approve user", { method: "POST" });
 }

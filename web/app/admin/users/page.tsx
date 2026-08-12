@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { AuthGuard } from "@/components/AuthGuard";
-import { adminApproveUser, adminBlockUser, adminListUsers, adminResetPassword, type AdminUser } from "@/lib/api";
+import { adminApproveUser, adminBlockUser, adminCreateUser, adminListUsers, adminResetPassword, type AdminUser } from "@/lib/api";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "ожидает одобрения",
@@ -24,6 +24,11 @@ function AdminUsersPageContent() {
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  const [newEmail, setNewEmail] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createdCredentials, setCreatedCredentials] = useState<{ email: string; password: string } | null>(null);
 
   function load() {
     adminListUsers()
@@ -57,6 +62,22 @@ function AdminUsersPageContent() {
     }
   }
 
+  async function handleCreateUser(event: React.FormEvent) {
+    event.preventDefault();
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const result = await adminCreateUser(newEmail.trim());
+      setCreatedCredentials({ email: result.email, password: result.generated_password });
+      setNewEmail("");
+      load();
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Не удалось создать пользователя");
+    } finally {
+      setCreating(false);
+    }
+  }
+
   async function handleResetPassword(id: string) {
     const newPassword = window.prompt("Новый пароль для пользователя (не короче 8 символов):");
     if (!newPassword) return;
@@ -79,6 +100,53 @@ function AdminUsersPageContent() {
           Назад в админку
         </Link>
       </div>
+
+      <section className="flex flex-col gap-3 rounded-2xl border border-solid border-black/[.08] p-6 dark:border-white/[.145]">
+        <h2 className="font-medium text-black dark:text-zinc-50">Добавить пользователя</h2>
+        <form onSubmit={handleCreateUser} className="flex flex-wrap gap-2">
+          <input
+            type="email"
+            required
+            placeholder="email@example.com"
+            value={newEmail}
+            onChange={(event) => setNewEmail(event.target.value)}
+            className="min-w-0 flex-1 rounded-lg border border-solid border-black/[.08] px-4 py-2 text-sm dark:border-white/[.145] dark:bg-zinc-900"
+          />
+          <button
+            type="submit"
+            disabled={creating}
+            className="shrink-0 rounded-full bg-foreground px-5 py-2 text-sm text-background transition-colors hover:bg-[#383838] disabled:opacity-50 dark:hover:bg-[#ccc]"
+          >
+            {creating ? "Создаём…" : "Добавить"}
+          </button>
+        </form>
+        {createError && <p className="text-sm text-red-600">{createError}</p>}
+        {createdCredentials && (
+          <div className="flex flex-col gap-2 rounded-lg border border-solid border-green-600/30 bg-green-600/5 p-4 text-sm">
+            <p>
+              Пользователь <strong>{createdCredentials.email}</strong> создан и сразу активен. Пароль показывается
+              только один раз — сохраните его перед закрытием:
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="rounded bg-black/[.05] px-2 py-1 font-mono dark:bg-white/[.08]">
+                {createdCredentials.password}
+              </code>
+              <button
+                onClick={() => navigator.clipboard.writeText(createdCredentials.password)}
+                className="rounded-full border border-solid border-black/[.08] px-3 py-1 text-xs transition-colors hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a]"
+              >
+                Скопировать
+              </button>
+              <button
+                onClick={() => setCreatedCredentials(null)}
+                className="text-xs text-zinc-500 underline"
+              >
+                Закрыть
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
 
       {error && <p className="text-red-600">{error}</p>}
       {users === null && !error && <p className="text-zinc-500">Загрузка…</p>}

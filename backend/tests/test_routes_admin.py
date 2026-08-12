@@ -59,6 +59,42 @@ def test_list_users_returns_all_users(client, db_session, admin_auth_headers, ad
     assert emails == {admin_user.email, active_user.email}
 
 
+def test_admin_create_user_returns_active_user_with_working_password(client, db_session, admin_auth_headers):
+    response = client.post("/admin/users", headers=admin_auth_headers, json={"email": "new@example.com"})
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["email"] == "new@example.com"
+    assert body["status"] == "active"
+    assert body["role"] == "user"
+    generated_password = body["generated_password"]
+    assert len(generated_password) == 16
+
+    login = client.post("/auth/login", json={"email": "new@example.com", "password": generated_password})
+    assert login.status_code == 200
+
+
+def test_admin_create_user_rejects_duplicate_email(client, admin_auth_headers, active_user):
+    response = client.post("/admin/users", headers=admin_auth_headers, json={"email": active_user.email})
+
+    assert response.status_code == 409
+
+
+def test_admin_create_user_rejects_regular_user(client, auth_headers):
+    response = client.post("/admin/users", headers=auth_headers, json={"email": "new@example.com"})
+
+    assert response.status_code == 403
+
+
+def test_admin_create_user_leaves_activity_log(client, db_session, admin_auth_headers, admin_user):
+    response = client.post("/admin/users", headers=admin_auth_headers, json={"email": "new@example.com"})
+    new_user_id = response.json()["id"]
+
+    log = db_session.query(ActivityLog).filter_by(user_id=admin_user.id, action="admin_created_user").first()
+    assert log is not None
+    assert log.context == {"target_user_id": new_user_id}
+
+
 def test_approve_user_sets_status_active(client, db_session, admin_auth_headers):
     pending = User(email="pending@example.com", password_hash="x", role="user", status="pending")
     db_session.add(pending)

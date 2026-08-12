@@ -1,7 +1,9 @@
+import secrets
+import string
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from app.activity_log import log_activity
@@ -43,6 +45,54 @@ def _user_response(user: User) -> AdminUserResponse:
 def list_users(db: Session = Depends(get_db)) -> list[AdminUserResponse]:
     users = db.query(User).order_by(User.created_at.desc()).all()
     return [_user_response(u) for u in users]
+
+
+GENERATED_PASSWORD_LENGTH = 16
+# Excludes visually ambiguous characters (0/O, 1/l/I) — this password is
+# meant to be read off a screen and typed or copy-pasted by a human once.
+GENERATED_PASSWORD_ALPHABET = "".join(
+    c for c in string.ascii_letters + string.digits if c not in "0O1lI"
+)
+
+
+def _generate_password() -> str:
+    return "".join(secrets.choice(GENERATED_PASSWORD_ALPHABET) for _ in range(GENERATED_PASSWORD_LENGTH))
+
+
+class AdminCreateUserRequest(BaseModel):
+    email: EmailStr
+
+
+class AdminCreateUserResponse(AdminUserResponse):
+    # Only ever present in the response to the create call itself — nothing
+    # persists it beyond the password_hash, so this is the one moment an
+    # admin can read it.
+    generated_password: str
+
+
+@router.post("/users", response_model=AdminCreateUserResponse, status_code=201)
+def create_user(
+    payload: AdminCreateUserRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+) -> AdminCreateUserResponse:
+    existing = db.query(User).filter_by(email=payload.email).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="пользователь с таким email уже существует")
+
+    password = _generate_password()
+    user = User(email=payload.email, password_hash=hash_password(password), role="user", status="active")
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    log_activity(db, admin.id, "admin_created_user", {"target_user_id": user.id}, request)
+
+    return AdminCreateUserResponse(
+        id=user.id, email=user.email, role=user.role, status=user.status, created_at=user.created_at,
+        generated_password=password,
+    )
 
 
 def _get_user_or_404(db: Session, user_id: str) -> User:
